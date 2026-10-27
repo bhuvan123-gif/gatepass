@@ -1,4 +1,4 @@
-
+from pydantic import BaseModel, Field
 import os
 from datetime import datetime, timezone
 
@@ -97,3 +97,87 @@ def setup_database():
             "status": "error",
             "message": "Database setup failed"
         }
+
+class FlatCreate(BaseModel):
+    flat_number: str = Field(min_length=1, max_length=30)
+    building: str | None = Field(default=None, max_length=50)
+
+
+@app.post("/flats")
+def create_flat(flat: FlatCreate):
+    database_url = os.getenv("DATABASE_URL")
+
+    try:
+        with psycopg.connect(
+            database_url,
+            connect_timeout=5,
+            sslmode="require",
+        ) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO flats (flat_number, building)
+                    VALUES (%s, %s)
+                    RETURNING id, flat_number, building, created_at
+                    """,
+                    (flat.flat_number.strip(), flat.building),
+                )
+                row = cursor.fetchone()
+
+                return {
+                    "id": row[0],
+                    "flat_number": row[1],
+                    "building": row[2],
+                    "created_at": row[3],
+                }
+
+    except psycopg.errors.UniqueViolation:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=409,
+            detail="This flat number is already registered",
+        )
+    except Exception:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=500,
+            detail="Could not register flat",
+        )
+
+
+@app.get("/flats")
+def list_flats():
+    database_url = os.getenv("DATABASE_URL")
+
+    try:
+        with psycopg.connect(
+            database_url,
+            connect_timeout=5,
+            sslmode="require",
+        ) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT id, flat_number, building, created_at
+                    FROM flats
+                    ORDER BY flat_number
+                    """
+                )
+                rows = cursor.fetchall()
+
+                return [
+                    {
+                        "id": row[0],
+                        "flat_number": row[1],
+                        "building": row[2],
+                        "created_at": row[3],
+                    }
+                    for row in rows
+                ]
+
+    except Exception:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=500,
+            detail="Could not retrieve flats",
+        )

@@ -63,3 +63,37 @@ def database_health_check():
             "status": "error",
             "message": "Database connection failed. Check server configuration.",
         }
+
+@app.post("/setup")
+def setup_database():
+    database_url = os.getenv("DATABASE_URL")
+
+    if not database_url:
+        return {"status": "error", "message": "Database configuration missing"}
+
+    try:
+        with psycopg.connect(
+            database_url,
+            connect_timeout=5,
+            sslmode="require",
+        ) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS flats (
+                        id BIGSERIAL PRIMARY KEY,
+                        flat_number VARCHAR(30) NOT NULL UNIQUE,
+                        building VARCHAR(50),
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                """)
+
+        return {
+            "status": "success",
+            "message": "Flats table is ready"
+        }
+
+    except Exception:
+        return {
+            "status": "error",
+            "message": "Database setup failed"
+        }

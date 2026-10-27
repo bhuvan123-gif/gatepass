@@ -1,5 +1,8 @@
+
+import os
 from datetime import datetime, timezone
 
+import psycopg
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -9,7 +12,8 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Temporary development setting. Restrict origins before production.
+# Temporary development configuration.
+# Restrict this before production.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -33,3 +37,29 @@ def health_check():
         "status": "healthy",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+
+@app.get("/health/db")
+def database_health_check():
+    database_url = os.getenv("DATABASE_URL")
+
+    if not database_url:
+        return {"status": "error", "message": "Database configuration missing"}
+
+    try:
+        with psycopg.connect(
+            database_url,
+            connect_timeout=5,
+            sslmode="require",
+        ) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+                cursor.fetchone()
+
+        return {"status": "connected", "database": "PostgreSQL"}
+
+    except Exception:
+        return {
+            "status": "error",
+            "message": "Database connection failed. Check server configuration.",
+        }

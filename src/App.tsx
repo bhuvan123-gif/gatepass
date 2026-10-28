@@ -302,113 +302,188 @@ const [residentsError, setResidentsError] = useState("");
 
           {activePage === "Dashboard" ? (
             <>
-              <section className="stats-grid">
-                <section className="panel" style={{ marginBottom: 24, padding: 24 }}>
+            
+<section className="panel" style={{ marginBottom: 24, padding: 24 }}>
   <div className="panel-heading">
     <div>
       <h3>Registered Flats</h3>
-      
-{/* Existing Registered Flats section */}
-<section className="panel">
-  {/* Your existing flats form and list stay here */}
-</section>
-
-{/* NEW Resident Management section goes here */}
-<section className="panel">
-  {/* Paste the full Resident Management form code here */}
-</section>
-
-{/* Existing dashboard sections continue below */}
-
       <p>Flats retrieved from the GatePass database</p>
     </div>
     <span className="live-tag">DATABASE</span>
   </div>
-<form
-onSubmit={async (e) => {
-  e.preventDefault();
-  setFlatMessage("Registering flat...");
 
-  try {
-    const newFlat = await createFlat(flatNumber, building);
+  <form
+    onSubmit={async (e) => {
+      e.preventDefault();
+      setFlatMessage("Registering flat...");
 
-    setFlats((currentFlats) => [...currentFlats, newFlat]);
-    setFlatNumber("");
-    setBuilding("");
-    setFlatMessage("Flat registered successfully!");
-  } catch (error) {
-    setFlatMessage(
-      error instanceof Error ? error.message : "Could not register flat."
-    );
-  }
-}}  style={{
-    display: "flex",
-    gap: 12,
-    flexWrap: "wrap",
-    marginBottom: 20,
-  }}
->
-<input
-  value={flatNumber}
-  onChange={(e) => setFlatNumber(e.target.value)}
-  placeholder="Flat number (e.g. A-101)"
-  required
-  style={{
-    padding: "12px",
-    border: "1px solid #ccc",
-    borderRadius: "8px",
-    minWidth: "200px",
-    color: "#111",
-    background: "#fff",
-  }}
-/>
+      try {
+        const newFlat = await createFlat(flatNumber.trim(), building.trim());
+        setFlats((current) => [...current, newFlat]);
+        setFlatNumber("");
+        setBuilding("");
+        setFlatMessage("Flat registered successfully!");
+      } catch (error) {
+        setFlatMessage(
+          error instanceof Error ? error.message : "Could not register flat."
+        );
+      }
+    }}
+    style={{
+      display: "flex",
+      gap: 12,
+      flexWrap: "wrap",
+      marginBottom: 20,
+    }}
+  >
+    <input
+      value={flatNumber}
+      onChange={(e) => setFlatNumber(e.target.value)}
+      placeholder="Flat number (e.g. A-101)"
+      required
+      style={{
+        padding: 12,
+        border: "1px solid #ccc",
+        borderRadius: 8,
+        minWidth: 200,
+        color: "#111",
+        background: "#fff",
+      }}
+    />
+    <input
+      value={building}
+      onChange={(e) => setBuilding(e.target.value)}
+      placeholder="Building (e.g. Tower A)"
+      style={{
+        padding: 12,
+        border: "1px solid #ccc",
+        borderRadius: 8,
+        minWidth: 200,
+        color: "#111",
+        background: "#fff",
+      }}
+    />
+    <button type="submit" style={{ padding: "12px 20px", borderRadius: 8 }}>
+      Register Flat
+    </button>
+  </form>
 
-<input
-  value={building}
-  onChange={(e) => setBuilding(e.target.value)}
-  placeholder="Building (e.g. Tower A)"
-  style={{
-    padding: "12px",
-    border: "1px solid #ccc",
-    borderRadius: "8px",
-    minWidth: "200px",
-    color: "#111",
-    background: "#fff",
-  }}
-/>
-
-  <button
-  type="submit"
-  style={{
-    padding: "12px 20px",
-    borderRadius: "8px",
-    cursor: "pointer",
-  }}
->
-  Register Flat
-</button>
-</form>
-
-{flatMessage && <p>{flatMessage}</p>}
+  {flatMessage && <p>{flatMessage}</p>}
   {flatsLoading && <p>Loading flats...</p>}
-
   {flatsError && <p>{flatsError}</p>}
 
   {!flatsLoading && !flatsError && flats.length === 0 && (
     <p>No flats registered yet.</p>
   )}
 
-  {!flatsLoading && !flatsError && flats.length > 0 && (
-    <div>
-      {flats.map((flat) => (
-        <div key={flat.id} style={{ padding: "12px 0" }}>
-          <strong>{flat.flat_number}</strong>
-          {flat.building && <span> — Building {flat.building}</span>}
-        </div>
-      ))}
+  {!flatsLoading && !flatsError && flats.map((flat) => (
+    <div key={flat.id} style={{ padding: "12px 0", borderBottom: "1px solid #eee" }}>
+      <strong>{flat.flat_number}</strong>
+      {flat.building && <span> — {flat.building}</span>}
     </div>
-  )}
+  ))}
 </section>
+
+<section className="panel" style={{ marginBottom: 24, padding: 24 }}>
+  <div className="panel-heading">
+    <div>
+      <h3>Resident Management</h3>
+      <p>Register residents and assign them to flats</p>
+    </div>
+    <span className="live-tag">DATABASE</span>
+  </div>
+
+  <form
+    onSubmit={async (e) => {
+      e.preventDefault();
+      setResidentMessage("Registering resident...");
+
+      try {
+        const newResident = await createResident(
+          residentName.trim(),
+          Number(residentFlatId),
+          residentPhone.trim()
+        );
+
+        setResidents((current) => [...current, newResident]);
+        setResidentName("");
+        setResidentFlatId("");
+        setResidentPhone("");
+        setResidentMessage("Resident registered successfully!");
+      } catch (error) {
+        setResidentMessage(
+          error instanceof Error ? error.message : "Could not register resident."
+        );
+      }
+    }}
+    style={{
+      display: "flex",
+      gap: 12,
+      flexWrap: "wrap",
+      marginBottom: 20,
+    }}
+  >
+    <input
+      value={residentName}
+      onChange={(e) => setResidentName(e.target.value)}
+      placeholder="Resident full name"
+      required
+      maxLength={100}
+      style={{ padding: 12, border: "1px solid #ccc", borderRadius: 8, color: "#111", background: "#fff" }}
+    />
+
+    <select
+      value={residentFlatId}
+      onChange={(e) => setResidentFlatId(e.target.value)}
+      required
+      style={{ padding: 12, border: "1px solid #ccc", borderRadius: 8, color: "#111", background: "#fff" }}
+    >
+      <option value="">Select flat</option>
+      {flats.map((flat) => (
+        <option key={flat.id} value={flat.id}>
+          {flat.flat_number}{flat.building ? ` — ${flat.building}` : ""}
+        </option>
+      ))}
+    </select>
+
+    <input
+      value={residentPhone}
+      onChange={(e) => setResidentPhone(e.target.value)}
+      placeholder="Phone (optional)"
+      maxLength={20}
+      style={{ padding: 12, border: "1px solid #ccc", borderRadius: 8, color: "#111", background: "#fff" }}
+    />
+
+    <button type="submit" disabled={flats.length === 0} style={{ padding: "12px 20px", borderRadius: 8 }}>
+      Register Resident
+    </button>
+  </form>
+
+  {flats.length === 0 && !flatsLoading && (
+    <p>Register a flat first before adding residents.</p>
+  )}
+  {residentMessage && <p>{residentMessage}</p>}
+  {residentsLoading && <p>Loading residents...</p>}
+  {residentsError && <p>{residentsError}</p>}
+
+  {!residentsLoading && !residentsError && residents.length === 0 && (
+    <p>No residents registered yet.</p>
+  )}
+
+  {!residentsLoading && !residentsError && residents.map((resident) => (
+    <div key={resident.id} style={{ padding: "12px 0", borderBottom: "1px solid #eee" }}>
+      <strong>{resident.full_name}</strong>
+      <div>
+        Flat {resident.flat_number}
+        {resident.building ? ` — ${resident.building}` : ""}
+      </div>
+      {resident.phone && <div>{resident.phone}</div>}
+    </div>
+  ))}
+</section>
+
+<section className="stats-grid">
+
                 {stats.map((stat) => {
                   const Icon = stat.icon;
                   return (

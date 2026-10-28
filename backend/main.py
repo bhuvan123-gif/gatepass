@@ -64,12 +64,16 @@ def database_health_check():
             "message": "Database connection failed. Check server configuration.",
         }
 
+
 @app.post("/setup")
 def setup_database():
     database_url = os.getenv("DATABASE_URL")
 
     if not database_url:
-        return {"status": "error", "message": "Database configuration missing"}
+        return {
+            "status": "error",
+            "message": "Database configuration missing"
+        }
 
     try:
         with psycopg.connect(
@@ -85,11 +89,14 @@ def setup_database():
                         building VARCHAR(50),
                         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                     )
-                """)                cur.execute("""
+                """)
+
+                cursor.execute("""
                     CREATE TABLE IF NOT EXISTS residents (
                         id BIGSERIAL PRIMARY KEY,
                         full_name VARCHAR(100) NOT NULL,
-                        flat_id BIGINT NOT NULL REFERENCES flats(id) ON DELETE RESTRICT,
+                        flat_id BIGINT NOT NULL
+                            REFERENCES flats(id) ON DELETE RESTRICT,
                         phone VARCHAR(20),
                         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                     )
@@ -97,7 +104,7 @@ def setup_database():
 
         return {
             "status": "success",
-            "message": "Flats table is ready"
+            "message": "Flats and residents tables are ready"
         }
 
     except Exception:

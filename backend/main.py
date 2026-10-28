@@ -257,3 +257,58 @@ def list_flats():
             status_code=500,
             detail="Could not retrieve flats",
         )
+        
+@app.get("/residents")
+def list_residents():
+    database_url = os.getenv("DATABASE_URL")
+
+    if not database_url:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=500,
+            detail="Database configuration missing",
+        )
+
+    try:
+        with psycopg.connect(
+            database_url,
+            connect_timeout=5,
+            sslmode="require",
+        ) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT
+                        r.id,
+                        r.full_name,
+                        r.flat_id,
+                        f.flat_number,
+                        f.building,
+                        r.phone,
+                        r.created_at
+                    FROM residents r
+                    JOIN flats f ON f.id = r.flat_id
+                    ORDER BY r.full_name
+                """)
+
+                rows = cursor.fetchall()
+
+                return [
+                    {
+                        "id": row[0],
+                        "full_name": row[1],
+                        "flat_id": row[2],
+                        "flat_number": row[3],
+                        "building": row[4],
+                        "phone": row[5],
+                        "created_at": row[6],
+                    }
+                    for row in rows
+                ]
+
+    except Exception:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=500,
+            detail="Could not retrieve residents",
+        )
+

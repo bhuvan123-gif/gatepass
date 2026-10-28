@@ -128,6 +128,19 @@ export async function createVisitor(
       purpose,
     }),
   });
+  
+export async function checkoutVisitor(visitorId: number): Promise<void> {
+  const response = await fetch(
+    `${API_BASE_URL}/visitors/${visitorId}/checkout`,
+    { method: "PATCH" }
+  );
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || "Failed to check out visitor");
+  }
+}
+
 
   if (!response.ok) {
     const message = await response.text();

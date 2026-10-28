@@ -307,20 +307,45 @@ onSubmit={async (e) => {
     marginBottom: 20,
   }}
 >
-  <input
-    value={flatNumber}
-    onChange={(e) => setFlatNumber(e.target.value)}
-    placeholder="Flat number (e.g. A-101)"
-    required
-  />
+<input
+  value={flatNumber}
+  onChange={(e) => setFlatNumber(e.target.value)}
+  placeholder="Flat number (e.g. A-101)"
+  required
+  style={{
+    padding: "12px",
+    border: "1px solid #ccc",
+    borderRadius: "8px",
+    minWidth: "200px",
+    color: "#111",
+    background: "#fff",
+  }}
+/>
 
-  <input
-    value={building}
-    onChange={(e) => setBuilding(e.target.value)}
-    placeholder="Building (e.g. Tower A)"
-  />
+<input
+  value={building}
+  onChange={(e) => setBuilding(e.target.value)}
+  placeholder="Building (e.g. Tower A)"
+  style={{
+    padding: "12px",
+    border: "1px solid #ccc",
+    borderRadius: "8px",
+    minWidth: "200px",
+    color: "#111",
+    background: "#fff",
+  }}
+/>
 
-  <button type="submit">Register Flat</button>
+  <button
+  type="submit"
+  style={{
+    padding: "12px 20px",
+    borderRadius: "8px",
+    cursor: "pointer",
+  }}
+>
+  Register Flat
+</button>
 </form>
 
 {flatMessage && <p>{flatMessage}</p>}

@@ -176,49 +176,7 @@ def create_flat(flat: FlatCreate):
 
 @app.post("/residents")
 
-@app.post("/visitors")
-def create_visitor(visitor: VisitorCreate):
-    try:
-        with get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO visitors (full_name, flat_id, phone, purpose)
-                    VALUES (%s, %s, %s, %s)
-                    RETURNING id, full_name, flat_id, phone, purpose,
-                              status, created_at, exited_at
-                    """,
-                    (
-                        visitor.full_name.strip(),
-                        visitor.flat_id,
-                        visitor.phone.strip(),
-                        visitor.purpose.strip(),
-                    ),
-                )
-                row = cur.fetchone()
 
-                if row is None:
-                    raise HTTPException(
-                        status_code=500,
-                        detail="Could not register visitor",
-                    )
-
-                return {
-                    "id": row[0],
-                    "full_name": row[1],
-                    "flat_id": row[2],
-                    "phone": row[3],
-                    "purpose": row[4],
-                    "status": row[5],
-                    "created_at": row[6],
-                    "exited_at": row[7],
-                }
-
-    except ForeignKeyViolation:
-        raise HTTPException(
-            status_code=404,
-            detail="Destination flat not found",
-        )
 
 def create_resident(resident: ResidentCreate):
     database_url = os.getenv("DATABASE_URL")
@@ -284,6 +242,49 @@ cur.execute("""
         exited_at TIMESTAMPTZ
     )
 """)
+@app.post("/visitors")
+def create_visitor(visitor: VisitorCreate):
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO visitors (full_name, flat_id, phone, purpose)
+                    VALUES (%s, %s, %s, %s)
+                    RETURNING id, full_name, flat_id, phone, purpose,
+                              status, created_at, exited_at
+                    """,
+                    (
+                        visitor.full_name.strip(),
+                        visitor.flat_id,
+                        visitor.phone.strip(),
+                        visitor.purpose.strip(),
+                    ),
+                )
+                row = cur.fetchone()
+
+                if row is None:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Could not register visitor",
+                    )
+
+                return {
+                    "id": row[0],
+                    "full_name": row[1],
+                    "flat_id": row[2],
+                    "phone": row[3],
+                    "purpose": row[4],
+                    "status": row[5],
+                    "created_at": row[6],
+                    "exited_at": row[7],
+                }
+
+    except ForeignKeyViolation:
+        raise HTTPException(
+            status_code=404,
+            detail="Destination flat not found",
+        )
 
 @app.get("/flats")
 def list_flats():

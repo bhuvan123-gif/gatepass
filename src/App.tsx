@@ -98,6 +98,9 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [mobileMenu, setMobileMenu] = useState(false);
   const [showVisitorForm, setShowVisitorForm] = useState(false);
+  const [flatNumber, setFlatNumber] = useState("");
+const [building, setBuilding] = useState("");
+const [flatMessage, setFlatMessage] = useState("");
     const [flats, setFlats] = useState<Flat[]>([]);
   const [flatsLoading, setFlatsLoading] = useState(true);
   const [flatsError, setFlatsError] = useState("");
@@ -280,7 +283,47 @@ export default function App() {
     </div>
     <span className="live-tag">DATABASE</span>
   </div>
+<form
+onSubmit={async (e) => {
+  e.preventDefault();
+  setFlatMessage("Registering flat...");
 
+  try {
+    const newFlat = await createFlat(flatNumber, building);
+
+    setFlats((currentFlats) => [...currentFlats, newFlat]);
+    setFlatNumber("");
+    setBuilding("");
+    setFlatMessage("Flat registered successfully!");
+  } catch (error) {
+    setFlatMessage(
+      error instanceof Error ? error.message : "Could not register flat."
+    );
+  }
+}}  style={{
+    display: "flex",
+    gap: 12,
+    flexWrap: "wrap",
+    marginBottom: 20,
+  }}
+>
+  <input
+    value={flatNumber}
+    onChange={(e) => setFlatNumber(e.target.value)}
+    placeholder="Flat number (e.g. A-101)"
+    required
+  />
+
+  <input
+    value={building}
+    onChange={(e) => setBuilding(e.target.value)}
+    placeholder="Building (e.g. Tower A)"
+  />
+
+  <button type="submit">Register Flat</button>
+</form>
+
+{flatMessage && <p>{flatMessage}</p>}
   {flatsLoading && <p>Loading flats...</p>}
 
   {flatsError && <p>{flatsError}</p>}

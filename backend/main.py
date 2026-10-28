@@ -124,8 +124,6 @@ class ResidentCreate(BaseModel):
     phone: str | None = Field(default=None, max_length=20)
 
 
-@app.post("/flats")
-def create_flat(flat: FlatCreate):
 
 
 @app.post("/flats")

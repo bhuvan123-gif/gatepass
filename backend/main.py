@@ -116,6 +116,10 @@ def setup_database():
 class FlatCreate(BaseModel):
     flat_number: str = Field(min_length=1, max_length=30)
     building: str | None = Field(default=None, max_length=50)
+    class ResidentCreate(BaseModel):
+    full_name: str = Field(min_length=1, max_length=100)
+    flat_id: int = Field(gt=0)
+    phone: str | None = Field(default=None, max_length=20)
 
 
 @app.post("/flats")
@@ -159,6 +163,59 @@ def create_flat(flat: FlatCreate):
             detail="Could not register flat",
         )
 
+
+@app.post("/residents")
+def create_resident(resident: ResidentCreate):
+    database_url = os.getenv("DATABASE_URL")
+
+    if not database_url:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=500,
+            detail="Database configuration missing",
+        )
+
+    try:
+        with psycopg.connect(
+            database_url,
+            connect_timeout=5,
+            sslmode="require",
+        ) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO residents (full_name, flat_id, phone)
+                    VALUES (%s, %s, %s)
+                    RETURNING id, full_name, flat_id, phone, created_at
+                    """,
+                    (
+                        resident.full_name.strip(),
+                        resident.flat_id,
+                        resident.phone,
+                    ),
+                )
+                row = cursor.fetchone()
+
+                return {
+                    "id": row[0],
+                    "full_name": row[1],
+                    "flat_id": row[2],
+                    "phone": row[3],
+                    "created_at": row[4],
+                }
+
+    except psycopg.errors.ForeignKeyViolation:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=404,
+            detail="That flat ID does not exist",
+        )
+    except Exception:
+        from fastapi import HTTPException
+        raise HTTPException(
+            status_code=500,
+            detail="Could not register resident",
+        )
 
 @app.get("/flats")
 def list_flats():

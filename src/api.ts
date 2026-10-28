@@ -100,10 +100,17 @@ export type Visitor = {
   exited_at: string | null;
 };
 
+
 export async function getVisitors(): Promise<Visitor[]> {
   const response = await fetch(`${API_BASE_URL}/visitors`);
 
- 
+  if (!response.ok) {
+    throw new Error("Failed to load visitors");
+  }
+
+  return response.json();
+}
+
 export async function createVisitor(
   full_name: string,
   flat_id: number,

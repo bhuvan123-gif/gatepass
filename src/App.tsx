@@ -1,12 +1,17 @@
+
 import {
   getFlats,
   createFlat,
   getResidents,
   createResident,
+  getVisitors,
+  createVisitor,
   type Flat,
   type Resident,
+  type Visitor,
 } from "./api";
 import { useEffect, useState } from "react";
+
 import {
   LayoutDashboard,
   Users,
@@ -34,72 +39,6 @@ const navigation = [
   { label: "Settings", icon: Settings },
 ];
 
-const visitors = [
-  {
-    name: "Rahul Sharma",
-    initials: "RS",
-    flat: "A-204",
-    purpose: "Personal Visit",
-    time: "10:42 AM",
-    status: "Inside",
-  },
-  {
-    name: "Amit Kumar",
-    initials: "AK",
-    flat: "B-108",
-    purpose: "Delivery",
-    time: "10:28 AM",
-    status: "Inside",
-  },
-  {
-    name: "Priya Singh",
-    initials: "PS",
-    flat: "C-302",
-    purpose: "Guest",
-    time: "10:15 AM",
-    status: "Exited",
-  },
-  {
-    name: "Vikram Verma",
-    initials: "VV",
-    flat: "A-105",
-    purpose: "Maintenance",
-    time: "09:56 AM",
-    status: "Inside",
-  },
-];
-
-const stats = [
-  {
-    label: "Total Residents",
-    value: "248",
-    change: "Registered members",
-    icon: Users,
-    color: "blue",
-  },
-  {
-    label: "Service Providers",
-    value: "36",
-    change: "Regular staff",
-    icon: UserRoundCog,
-    color: "purple",
-  },
-  {
-    label: "Today's Visitors",
-    value: "42",
-    change: "Visitor registrations",
-    icon: ClipboardList,
-    color: "orange",
-  },
-  {
-    label: "Currently Inside",
-    value: "18",
-    change: "Active visitor entries",
-    icon: ShieldCheck,
-    color: "green",
-  },
-];
-
 export default function App() {
   const [activePage, setActivePage] = useState("Dashboard");
   const [search, setSearch] = useState("");
@@ -118,6 +57,29 @@ const [residentPhone, setResidentPhone] = useState("");
 const [residentMessage, setResidentMessage] = useState("");
 const [residentsLoading, setResidentsLoading] = useState(true);
 const [residentsError, setResidentsError] = useState("");
+
+const [visitors, setVisitors] = useState<Visitor[]>([]);
+const [visitorsLoading, setVisitorsLoading] = useState(true);
+const [visitorsError, setVisitorsError] = useState("");
+
+async function loadVisitors() {
+  try {
+    const data = await getVisitors();
+    setVisitors(data);
+    setVisitorsError("");
+  } catch (error) {
+    console.error("Failed to load visitors:", error);
+    setVisitorsError(
+      error instanceof Error ? error.message : "Could not load visitors."
+    );
+  } finally {
+    setVisitorsLoading(false);
+  }
+}
+
+useEffect(() => {
+  void loadVisitors();
+}, []);
 
   useEffect(() => {
     getFlats()

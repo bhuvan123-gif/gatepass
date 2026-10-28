@@ -1,4 +1,11 @@
-import { getFlats, createFlat, type Flat } from "./api";
+import {
+  getFlats,
+  createFlat,
+  getResidents,
+  createResident,
+  type Flat,
+  type Resident,
+} from "./api";
 import { useEffect, useState } from "react";
 import {
   LayoutDashboard,

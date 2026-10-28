@@ -39,6 +39,12 @@ const navigation = [
   { label: "Settings", icon: Settings },
 ];
 
+const stats = [
+  { label: "Total Visitors", value: "0", icon: Users },
+  { label: "Currently Inside", value: "0", icon: UserCheck },
+  { label: "Today's Visitors", value: "0", icon: CalendarDays },
+  { label: "Registered Flats", value: "0", icon: Building2 },
+];
 export default function App() {
   const [activePage, setActivePage] = useState("Dashboard");
   const [search, setSearch] = useState("");
@@ -509,42 +515,65 @@ const filteredVisitors = visitors.filter((visitor) =>
                           <th>STATUS</th>
                         </tr>
                       </thead>
-                      <tbody>
-                        {filteredVisitors.map((visitor) => (
-                          <tr key={visitor.name}>
-                            <td>
-                              <div className="visitor-person">
-                                <div className="avatar visitor-avatar">
-                                  {visitor.initials}
-                                </div>
-                                <span>{visitor.name}</span>
-                              </div>
-                            </td>
-                            <td className="flat-number">{visitor.flat}</td>
-                            <td>{visitor.purpose}</td>
-                            <td>{visitor.time}</td>
-                            <td>
-                              <span
-                                className={`badge ${
-                                  visitor.status === "Inside"
-                                    ? "badge-green"
-                                    : "badge-gray"
-                                }`}
-                              >
-                                <span className="badge-dot" />
-                                {visitor.status}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                        {filteredVisitors.length === 0 && (
-                          <tr>
-                            <td colSpan={5} className="empty-state">
-                              No matching visitors found.
-                            </td>
-                          </tr>
-                        )}
-                      </tbody>
+                     <tbody>
+  {visitorsLoading && (
+    <tr>
+      <td colSpan={5} className="empty-state">Loading visitors...</td>
+    </tr>
+  )}
+
+  {!visitorsLoading && visitorsError && (
+    <tr>
+      <td colSpan={5} className="empty-state">{visitorsError}</td>
+    </tr>
+  )}
+
+  {!visitorsLoading && !visitorsError && filteredVisitors.map((visitor) => (
+    <tr key={visitor.id}>
+      <td>
+        <div className="visitor-person">
+          <div className="avatar visitor-avatar">
+            {visitor.full_name
+              .split(/\s+/)
+              .map((part) => part[0])
+              .join("")
+              .slice(0, 2)
+              .toUpperCase()}
+          </div>
+          <span>{visitor.full_name}</span>
+        </div>
+      </td>
+
+      <td className="flat-number">
+        {visitor.building
+          ? `${visitor.building} - ${visitor.flat_number}`
+          : visitor.flat_number}
+      </td>
+
+      <td>{visitor.purpose}</td>
+
+      <td>
+        {new Date(visitor.created_at).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        })}
+      </td>
+
+      <td>
+        <span className={`badge ${visitor.status === "Inside" ? "badge-green" : "badge-gray"}`}>
+          <span className="badge-dot" />
+          {visitor.status}
+        </span>
+      </td>
+    </tr>
+  ))}
+
+  {!visitorsLoading && !visitorsError && filteredVisitors.length === 0 && (
+    <tr>
+      <td colSpan={5} className="empty-state">No visitors registered yet.</td>
+    </tr>
+  )}
+</tbody>
                     </table>
                   </div>
 
@@ -768,10 +797,11 @@ const filteredVisitors = visitors.filter((visitor) =>
         return;
       }
 
-      await createVisitor(fullName, flat.id, phone, purpose);
+     await createVisitor(fullName, flat.id, phone, purpose);
+await loadVisitors();
 
-      alert("Visitor registered successfully!");
-      setShowVisitorForm(false);
+alert("Visitor registered successfully!");
+setShowVisitorForm(false);
     } catch (error) {
       console.error(error);
       alert(

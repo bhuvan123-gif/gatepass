@@ -39,12 +39,7 @@ const navigation = [
   { label: "Settings", icon: Settings },
 ];
 
-const stats = [
-  { label: "Total Visitors", value: "0", icon: Users, color: "blue", change: "Live data coming next" },
-  { label: "Currently Inside", value: "0", icon: Users, color: "green", change: "Live data coming next" },
-  { label: "Today's Visitors", value: "0", icon: Users, color: "orange", change: "Live data coming next" },
-  { label: "Registered Flats", value: "0", icon: Users, color: "purple", change: "Live data coming next" },
-];
+
 export default function App() {
   const [activePage, setActivePage] = useState("Dashboard");
   const [search, setSearch] = useState("");
@@ -65,6 +60,41 @@ const [residentsLoading, setResidentsLoading] = useState(true);
 const [residentsError, setResidentsError] = useState("");
 
 const [visitors, setVisitors] = useState<Visitor[]>([]);
+  const stats = [
+  {
+    label: "Total Visitors",
+    value: String(visitors.length),
+    icon: Users,
+    color: "blue",
+    change: "All registered visitors",
+  },
+  {
+    label: "Currently Inside",
+    value: String(visitors.filter((visitor) => visitor.status === "Inside").length),
+    icon: Users,
+    color: "green",
+    change: "Currently on premises",
+  },
+  {
+    label: "Today's Visitors",
+    value: String(
+      visitors.filter(
+        (visitor) =>
+          new Date(visitor.created_at).toDateString() === new Date().toDateString()
+      ).length
+    ),
+    icon: Users,
+    color: "orange",
+    change: "Registered today",
+  },
+  {
+    label: "Registered Flats",
+    value: String(flats.length),
+    icon: Users,
+    color: "purple",
+    change: "Flats in database",
+  },
+];
 const [visitorsLoading, setVisitorsLoading] = useState(true);
 const [visitorsError, setVisitorsError] = useState("");
 

@@ -111,6 +111,13 @@ const [flatMessage, setFlatMessage] = useState("");
     const [flats, setFlats] = useState<Flat[]>([]);
   const [flatsLoading, setFlatsLoading] = useState(true);
   const [flatsError, setFlatsError] = useState("");
+  const [residents, setResidents] = useState<Resident[]>([]);
+const [residentName, setResidentName] = useState("");
+const [residentFlatId, setResidentFlatId] = useState("");
+const [residentPhone, setResidentPhone] = useState("");
+const [residentMessage, setResidentMessage] = useState("");
+const [residentsLoading, setResidentsLoading] = useState(true);
+const [residentsError, setResidentsError] = useState("");
 
   useEffect(() => {
     getFlats()
@@ -126,6 +133,20 @@ const [flatMessage, setFlatMessage] = useState("");
         setFlatsLoading(false);
       });
   }, []);
+  useEffect(() => {
+  getResidents()
+    .then((data) => {
+      setResidents(data);
+      setResidentsError("");
+    })
+    .catch((error) => {
+      console.error("Failed to load residents:", error);
+      setResidentsError("Could not load residents from the API.");
+    })
+    .finally(() => {
+      setResidentsLoading(false);
+    });
+}, []);
 
   const filteredVisitors = visitors.filter((visitor) =>
     [
@@ -286,6 +307,19 @@ const [flatMessage, setFlatMessage] = useState("");
   <div className="panel-heading">
     <div>
       <h3>Registered Flats</h3>
+      
+{/* Existing Registered Flats section */}
+<section className="panel">
+  {/* Your existing flats form and list stay here */}
+</section>
+
+{/* NEW Resident Management section goes here */}
+<section className="panel">
+  {/* Paste the full Resident Management form code here */}
+</section>
+
+{/* Existing dashboard sections continue below */}
+
       <p>Flats retrieved from the GatePass database</p>
     </div>
     <span className="live-tag">DATABASE</span>

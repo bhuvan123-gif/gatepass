@@ -110,17 +110,18 @@ useEffect(() => {
     });
 }, []);
 
-  const filteredVisitors = visitors.filter((visitor) =>
-    [
-      visitor.name,
-      visitor.flat,
-      visitor.purpose,
-      visitor.status,
-    ]
-      .join(" ")
-      .toLowerCase()
-      .includes(search.toLowerCase())
-  );
+const filteredVisitors = visitors.filter((visitor) =>
+  [
+    visitor.full_name,
+    visitor.flat_number,
+    visitor.building ?? "",
+    visitor.purpose,
+    visitor.status,
+  ]
+    .join(" ")
+    .toLowerCase()
+    .includes(search.toLowerCase())
+);
 
   return (
     <div className="app-shell">

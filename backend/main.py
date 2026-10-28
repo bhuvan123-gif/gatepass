@@ -123,6 +123,12 @@ class ResidentCreate(BaseModel):
     flat_id: int = Field(gt=0)
     phone: str | None = Field(default=None, max_length=20)
 
+class VisitorCreate(BaseModel):
+    full_name: str = Field(min_length=1, max_length=100)
+    flat_id: int = Field(gt=0)
+    phone: str = Field(min_length=1, max_length=20)
+    purpose: str = Field(min_length=1, max_length=50)
+
 
 
 
@@ -220,6 +226,19 @@ def create_resident(resident: ResidentCreate):
             status_code=500,
             detail="Could not register resident",
         )
+
+cur.execute("""
+    CREATE TABLE IF NOT EXISTS visitors (
+        id BIGSERIAL PRIMARY KEY,
+        full_name VARCHAR(100) NOT NULL,
+        flat_id BIGINT NOT NULL REFERENCES flats(id) ON DELETE RESTRICT,
+        phone VARCHAR(20) NOT NULL,
+        purpose VARCHAR(50) NOT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'Inside',
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        exited_at TIMESTAMPTZ
+    )
+""")
 
 @app.get("/flats")
 def list_flats():

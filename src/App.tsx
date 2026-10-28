@@ -6,6 +6,7 @@ import {
   createResident,
   getVisitors,
   createVisitor,
+  checkoutVisitor,
   type Flat,
   type Resident,
   type Visitor,

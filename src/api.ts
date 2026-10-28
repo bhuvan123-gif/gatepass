@@ -103,13 +103,7 @@ export type Visitor = {
 export async function getVisitors(): Promise<Visitor[]> {
   const response = await fetch(`${API_BASE_URL}/visitors`);
 
-  if (!response.ok) {
-    throw new Error("Failed to load visitors");
-  }
-
-  return response.json();
-}
-
+ 
 export async function createVisitor(
   full_name: string,
   flat_id: number,
@@ -128,8 +122,18 @@ export async function createVisitor(
       purpose,
     }),
   });
-  
-export async function checkoutVisitor(visitorId: number): Promise<void> {
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || "Failed to register visitor");
+  }
+
+  return response.json();
+}
+
+export async function checkoutVisitor(
+  visitorId: number
+): Promise<void> {
   const response = await fetch(
     `${API_BASE_URL}/visitors/${visitorId}/checkout`,
     { method: "PATCH" }
@@ -139,13 +143,4 @@ export async function checkoutVisitor(visitorId: number): Promise<void> {
     const message = await response.text();
     throw new Error(message || "Failed to check out visitor");
   }
-}
-
-
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || "Failed to register visitor");
-  }
-
-  return response.json();
 }

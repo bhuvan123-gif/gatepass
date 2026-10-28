@@ -418,3 +418,44 @@ def list_visitors():
             status_code=500,
             detail="Could not retrieve visitors",
         )
+        
+@app.patch("/visitors/{visitor_id}/checkout")
+def checkout_visitor(visitor_id: int):
+    try:
+        with get_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE visitors
+                    SET status = 'Checked Out',
+                        exited_at = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                      AND status = 'Inside'
+                    RETURNING id, full_name, status, exited_at
+                    """,
+                    (visitor_id,),
+                )
+
+                row = cursor.fetchone()
+
+                if row is None:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="Visitor not found or already checked out",
+                    )
+
+                return {
+                    "id": row[0],
+                    "full_name": row[1],
+                    "status": row[2],
+                    "exited_at": row[3],
+                }
+
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail="Could not check out visitor",
+        )
+

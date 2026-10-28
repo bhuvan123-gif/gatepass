@@ -15,6 +15,9 @@ import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   Users,
+  UserCheck,
+  CalendarDays,
+  Building2,
   UserRoundCog,
   ClipboardList,
   ShieldCheck,
@@ -40,10 +43,10 @@ const navigation = [
 ];
 
 const stats = [
-  { label: "Total Visitors", value: "0", icon: Users },
-  { label: "Currently Inside", value: "0", icon: UserCheck },
-  { label: "Today's Visitors", value: "0", icon: CalendarDays },
-  { label: "Registered Flats", value: "0", icon: Building2 },
+  { label: "Total Visitors", value: "0", icon: Users, color: "blue", change: "Live data coming next" },
+  { label: "Currently Inside", value: "0", icon: Users, color: "green", change: "Live data coming next" },
+  { label: "Today's Visitors", value: "0", icon: Users, color: "orange", change: "Live data coming next" },
+  { label: "Registered Flats", value: "0", icon: Users, color: "purple", change: "Live data coming next" },
 ];
 export default function App() {
   const [activePage, setActivePage] = useState("Dashboard");
@@ -782,8 +785,8 @@ const filteredVisitors = visitors.filter((visitor) =>
     const purpose = String(data.get("purpose") || "");
 
     try {
-      const { getFlats, createVisitor } = await import("./api");
-      const flats = await getFlats();
+     const flats = await getFlats();
+     
 
       const flat = flats.find(
         (item) =>

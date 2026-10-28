@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { getFlats, createFlat, type Flat } from "./api";
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard,
   Users,
@@ -97,6 +98,24 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [mobileMenu, setMobileMenu] = useState(false);
   const [showVisitorForm, setShowVisitorForm] = useState(false);
+    const [flats, setFlats] = useState<Flat[]>([]);
+  const [flatsLoading, setFlatsLoading] = useState(true);
+  const [flatsError, setFlatsError] = useState("");
+
+  useEffect(() => {
+    getFlats()
+      .then((data) => {
+        setFlats(data);
+        setFlatsError("");
+      })
+      .catch((error) => {
+        console.error("Failed to load flats:", error);
+        setFlatsError("Could not load flats from the API.");
+      })
+      .finally(() => {
+        setFlatsLoading(false);
+      });
+  }, []);
 
   const filteredVisitors = visitors.filter((visitor) =>
     [
@@ -253,6 +272,34 @@ export default function App() {
           {activePage === "Dashboard" ? (
             <>
               <section className="stats-grid">
+                <section className="panel" style={{ marginBottom: 24, padding: 24 }}>
+  <div className="panel-heading">
+    <div>
+      <h3>Registered Flats</h3>
+      <p>Flats retrieved from the GatePass database</p>
+    </div>
+    <span className="live-tag">DATABASE</span>
+  </div>
+
+  {flatsLoading && <p>Loading flats...</p>}
+
+  {flatsError && <p>{flatsError}</p>}
+
+  {!flatsLoading && !flatsError && flats.length === 0 && (
+    <p>No flats registered yet.</p>
+  )}
+
+  {!flatsLoading && !flatsError && flats.length > 0 && (
+    <div>
+      {flats.map((flat) => (
+        <div key={flat.id} style={{ padding: "12px 0" }}>
+          <strong>{flat.flat_number}</strong>
+          {flat.building && <span> — Building {flat.building}</span>}
+        </div>
+      ))}
+    </div>
+  )}
+</section>
                 {stats.map((stat) => {
                   const Icon = stat.icon;
                   return (

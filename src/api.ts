@@ -86,3 +86,53 @@ export async function createResident(
   return response.json();
 }
 
+
+export type Visitor = {
+  id: number;
+  full_name: string;
+  flat_id: number;
+  flat_number: string;
+  building: string | null;
+  phone: string;
+  purpose: string;
+  status: string;
+  created_at: string;
+  exited_at: string | null;
+};
+
+export async function getVisitors(): Promise<Visitor[]> {
+  const response = await fetch(`${API_BASE_URL}/visitors`);
+
+  if (!response.ok) {
+    throw new Error("Failed to load visitors");
+  }
+
+  return response.json();
+}
+
+export async function createVisitor(
+  full_name: string,
+  flat_id: number,
+  phone: string,
+  purpose: string
+): Promise<Visitor> {
+  const response = await fetch(`${API_BASE_URL}/visitors`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      full_name,
+      flat_id,
+      phone,
+      purpose,
+    }),
+  });
+
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || "Failed to register visitor");
+  }
+
+  return response.json();
+}

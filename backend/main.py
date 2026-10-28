@@ -116,10 +116,16 @@ def setup_database():
 class FlatCreate(BaseModel):
     flat_number: str = Field(min_length=1, max_length=30)
     building: str | None = Field(default=None, max_length=50)
-    class ResidentCreate(BaseModel):
+
+
+class ResidentCreate(BaseModel):
     full_name: str = Field(min_length=1, max_length=100)
     flat_id: int = Field(gt=0)
     phone: str | None = Field(default=None, max_length=20)
+
+
+@app.post("/flats")
+def create_flat(flat: FlatCreate):
 
 
 @app.post("/flats")

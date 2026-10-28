@@ -775,83 +775,126 @@ const [residentsError, setResidentsError] = useState("");
 
       {showVisitorForm && (
         <div className="modal-backdrop">
-          <form
-            className="visitor-modal"
-            onSubmit={(event) => {
-              event.preventDefault();
-              alert(
-                "This form is a UI preview only. Visitor records will be saved after database integration."
-              );
-              setShowVisitorForm(false);
-            }}
-          >
-            <div className="modal-heading">
-              <div>
-                <span className="eyebrow">GATE OPERATIONS</span>
-                <h3>Register Visitor</h3>
-              </div>
-              <button
-                type="button"
-                className="icon-button"
-                onClick={() => setShowVisitorForm(false)}
-                aria-label="Close form"
-              >
-                <X size={20} />
-              </button>
-            </div>
+       
+<form
+  className="visitor-modal"
+  onSubmit={async (event) => {
+    event.preventDefault();
 
-            <label>
-              Visitor name
-              <input required placeholder="Enter full name" />
-            </label>
+    const form = event.currentTarget;
+    const data = new FormData(form);
 
-            <label>
-              Contact number
-              <input
-                required
-                type="tel"
-                inputMode="tel"
-                placeholder="Enter phone number"
-              />
-            </label>
+    const fullName = String(data.get("visitorName") || "").trim();
+    const phone = String(data.get("phone") || "").trim();
+    const destination = String(data.get("destination") || "").trim();
+    const purpose = String(data.get("purpose") || "");
 
-            <label>
-              Destination flat
-              <input required placeholder="e.g. A-204" />
-            </label>
+    try {
+      const { getFlats, createVisitor } = await import("./api");
+      const flats = await getFlats();
 
-            <label>
-              Purpose of visit
-              <select required defaultValue="">
-                <option value="" disabled>
-                  Select purpose
-                </option>
-                <option>Personal Visit</option>
-                <option>Delivery</option>
-                <option>Maintenance</option>
-                <option>Service Provider</option>
-                <option>Other</option>
-              </select>
-            </label>
+      const flat = flats.find(
+        (item) =>
+          item.flat_number.toLowerCase() === destination.toLowerCase() ||
+          `${item.building ?? ""}-${item.flat_number}`.toLowerCase() ===
+            destination.toLowerCase()
+      );
 
-            <div className="form-notice">
-              Demo only. Do not enter real visitor information yet.
-            </div>
+      if (!flat) {
+        alert("Flat not found. Enter a registered flat number.");
+        return;
+      }
 
-            <div className="modal-actions">
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => setShowVisitorForm(false)}
-              >
-                Cancel
-              </button>
-              <button type="submit" className="primary-button">
-                Preview Registration
-              </button>
-            </div>
-          </form>
-        </div>
+      await createVisitor(fullName, flat.id, phone, purpose);
+
+      alert("Visitor registered successfully!");
+      setShowVisitorForm(false);
+    } catch (error) {
+      console.error(error);
+      alert(
+        error instanceof Error
+          ? `Registration failed: ${error.message}`
+          : "Registration failed. Please try again."
+      );
+    }
+  }}
+>
+  <div className="modal-heading">
+    <div>
+      <span className="eyebrow">GATE OPERATIONS</span>
+      <h3>Register Visitor</h3>
+    </div>
+    <button
+      type="button"
+      className="icon-button"
+      onClick={() => setShowVisitorForm(false)}
+      aria-label="Close form"
+    >
+      <X size={20} />
+    </button>
+  </div>
+
+  <label>
+    Visitor name
+    <input
+      name="visitorName"
+      required
+      placeholder="Enter full name"
+    />
+  </label>
+
+  <label>
+    Contact number
+    <input
+      name="phone"
+      required
+      type="tel"
+      inputMode="tel"
+      placeholder="Enter phone number"
+    />
+  </label>
+
+  <label>
+    Destination flat
+    <input
+      name="destination"
+      required
+      placeholder="e.g. A-204"
+    />
+  </label>
+
+  <label>
+    Purpose of visit
+    <select name="purpose" required defaultValue="">
+      <option value="" disabled>
+        Select purpose
+      </option>
+      <option value="Personal Visit">Personal Visit</option>
+      <option value="Delivery">Delivery</option>
+      <option value="Maintenance">Maintenance</option>
+      <option value="Service Provider">Service Provider</option>
+      <option value="Other">Other</option>
+    </select>
+  </label>
+
+  <div className="form-notice">
+    Development preview. Use fictional test information only.
+  </div>
+
+  <div className="modal-actions">
+    <button
+      type="button"
+      className="secondary-button"
+      onClick={() => setShowVisitorForm(false)}
+    >
+      Cancel
+    </button>
+    <button type="submit" className="primary-button">
+      Register Visitor
+    </button>
+  </div>
+</form>
+ </div>
       )}
 
       <footer className="app-footer">

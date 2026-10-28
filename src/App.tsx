@@ -14,8 +14,7 @@ import { useEffect, useState } from "react";
 
 import {
   LayoutDashboard,
- 
-  Building2,
+  Users,
   UserRoundCog,
   ClipboardList,
   ShieldCheck,

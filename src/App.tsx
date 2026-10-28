@@ -590,12 +590,34 @@ const filteredVisitors = visitors.filter((visitor) =>
         })}
       </td>
 
-      <td>
-        <span className={`badge ${visitor.status === "Inside" ? "badge-green" : "badge-gray"}`}>
-          <span className="badge-dot" />
-          {visitor.status}
-        </span>
-      </td>
+    
+<td>
+  <span className={`badge ${visitor.status === "Inside" ? "badge-green" : "badge-gray"}`}>
+    <span className="badge-dot" />
+    {visitor.status}
+  </span>
+
+  {visitor.status === "Inside" && (
+    <button
+      type="button"
+      onClick={async () => {
+        try {
+          await checkoutVisitor(visitor.id);
+          await loadVisitors();
+        } catch (error) {
+          alert(
+            error instanceof Error
+              ? error.message
+              : "Could not check out visitor."
+          );
+        }
+      }}
+    >
+      Check Out
+    </button>
+  )}
+</td>
+
     </tr>
   ))}
 

@@ -85,6 +85,14 @@ def setup_database():
                         building VARCHAR(50),
                         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                     )
+                """)                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS residents (
+                        id BIGSERIAL PRIMARY KEY,
+                        full_name VARCHAR(100) NOT NULL,
+                        flat_id BIGINT NOT NULL REFERENCES flats(id) ON DELETE RESTRICT,
+                        phone VARCHAR(20),
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
                 """)
 
         return {

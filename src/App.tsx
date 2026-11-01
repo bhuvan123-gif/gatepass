@@ -925,9 +925,19 @@ export default function App() {
 
   // ---------------- RESIDENTS PAGE ----------------
 
-  function renderResidents() {
-    return (
-      <section className="panel" style={{ padding: 24 }}>
+ 
+function renderResidents() {
+  return (
+    <>
+      {/* FLAT REGISTRATION AND QR GENERATION */}
+      {renderFlats()}
+
+      {/* RESIDENT MANAGEMENT */}
+      <section
+        className="panel"
+        id="resident-management"
+        style={{ padding: 24, marginTop: 24 }}
+      >
         <div className="panel-heading">
           <div>
             <h3>Resident Management</h3>
@@ -969,7 +979,8 @@ export default function App() {
           <input
             value={residentPhone}
             onChange={(event) => setResidentPhone(event.target.value)}
-            placeholder="Phone (mandatory)"
+            placeholder="Phone number"
+            required
             maxLength={20}
           />
 
@@ -984,7 +995,7 @@ export default function App() {
 
         {residentMessage && <p role="status">{residentMessage}</p>}
         {residentsLoading && <p>Loading residents...</p>}
-        {residentsError && <p>{residentsError}</p>}
+        {residentsError && <p role="alert">{residentsError}</p>}
 
         {!residentsLoading && !residentsError && residents.length === 0 && (
           <p>No residents registered yet.</p>
@@ -1001,19 +1012,23 @@ export default function App() {
               }}
             >
               <strong>{resident.full_name}</strong>
+
               <div>
                 Flat {resident.flat_number ?? resident.flat_id}
                 {resident.building ? ` — ${resident.building}` : ""}
               </div>
+
               {resident.phone && <div>{resident.phone}</div>}
+
               <small>
                 Current status: {residentStatus(resident.id)}
               </small>
             </div>
           ))}
       </section>
-    );
-  }
+    </>
+  );
+}
 
   // ---------------- SERVICE PROVIDERS PAGE ----------------
 

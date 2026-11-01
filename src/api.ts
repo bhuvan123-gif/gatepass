@@ -135,6 +135,24 @@ export function checkoutVisitor(visitorId: number) {
   });
 }
 
+// ---------------- VISITOR ACCESS LOGS ----------------
+
+export interface VisitorAccessLog {
+  id: number;
+  full_name: string;
+  flat_id: number;
+  flat_number: string;
+  building: string | null;
+  phone: string;
+  purpose: string;
+  status: string;
+  created_at: string;
+  exited_at: string | null;
+}
+
+export function getVisitorAccessLogs() {
+  return apiRequest<VisitorAccessLog[]>("/visitor-access-logs");
+}
 // ---------------- SERVICE PROVIDERS ----------------
 
 export interface SecondaryPerson {

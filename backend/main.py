@@ -580,3 +580,32 @@ def record_resident_movement(data: ResidentMovementCreate):
         "full_name": resident["full_name"],
         "status": "Inside" if data.action == "Check In" else "Outside",
     }
+@app.get("/visitor-access-logs")
+def get_visitor_access_logs():
+    try:
+        with db_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    SELECT
+                        v.id,
+                        v.full_name,
+                        v.flat_id,
+                        f.flat_number,
+                        f.building,
+                        v.phone,
+                        v.purpose,
+                        v.status,
+                        v.created_at,
+                        v.exited_at
+                    FROM visitors v
+                    JOIN flats f ON f.id = v.flat_id
+                    ORDER BY v.created_at DESC
+                """)
+                return cursor.fetchall()
+
+    except Exception:
+        logger.exception("Could not retrieve visitor access logs")
+        raise HTTPException(
+            status_code=500,
+            detail="Could not retrieve visitor access logs",
+        )

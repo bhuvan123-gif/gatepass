@@ -1,627 +1,1122 @@
 import { useCallback, useEffect, useState } from "react";
 import {
-  getFlats, createFlat, getResidents, createResident, getVisitors,
-  createVisitor, checkoutVisitor, getSecondaryPeople, createSecondaryPerson,
-  deactivateSecondaryPerson, generateFlatQR,
-  type Flat, type Resident, type Visitor, type SecondaryPerson,
+  getFlats,
+  createFlat,
+  getResidents,
+  createResident,
+  getVisitors,
+  createVisitor,
+  checkoutVisitor,
+  getSecondaryPeople,
+  createSecondaryPerson,
+  deactivateSecondaryPerson,
+  generateFlatQR,
+  validateQR,
+  getResidentMovements,
+  getCurrentResidentStatus,
+  recordResidentMovement,
+  type Flat,
+  type Resident,
+  type Visitor,
+  type SecondaryPerson,
+  type SecondaryPersonCreated,
+  type FlatQRCreated,
+  type QRValidationResult,
+  type ResidentMovement,
+  type CurrentResidentStatus,
+  type MovementAction,
 } from "./api";
+
 import { QRCodeSVG } from "qrcode.react";
 import { Html5QrcodeScanner } from "html5-qrcode";
-import { validateSecondaryQR } from "./api";
-import {
-  LayoutDashboard, Users, UserRoundCog, ClipboardList, ShieldCheck,
-  Settings, Search, Bell, Plus, ArrowUpRight, ArrowDownRight, Clock,
-  Car, Menu, X,
-} from "lucide-react";
+import { useEffect as useReactEffect, useRef } from "react";
 
-const navigation = [
-  { label: "Dashboard", icon: LayoutDashboard },
-  { label: "Residents", icon: Users },
-  { label: "Service Providers", icon: UserRoundCog },
-  { label: "Visitors", icon: ClipboardList },
-  { label: "Access Logs", icon: ShieldCheck },
-  { label: "Settings", icon: Settings },
-];
+type Page =
+  | "Dashboard"
+  | "Residents"
+  | "Service Providers"
+  | "Visitors"
+  | "Access Logs"
+  | "Settings";
 
 export default function App() {
-  const [activePage, setActivePage] = useState("Dashboard");
-  const [search, setSearch] = useState("");
-  const [mobileMenu, setMobileMenu] = useState(false);
-  const [showVisitorForm, setShowVisitorForm] = useState(false);
-  const [visitorFlatId, setVisitorFlatId] = useState("");
-  const [visitorSubmitting, setVisitorSubmitting] = useState(false);
+  const [activePage, setActivePage] = useState<Page>("Dashboard");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
 
   const [flats, setFlats] = useState<Flat[]>([]);
-  const [flatsLoading, setFlatsLoading] = useState(true);
-  const [flatsError, setFlatsError] = useState("");
+  const [residents, setResidents] = useState<Resident[]>([]);
+  const [visitors, setVisitors] = useState<Visitor[]>([]);
+  const [providers, setProviders] = useState<SecondaryPerson[]>([]);
+  const [movements, setMovements] = useState<ResidentMovement[]>([]);
+  const [currentStatuses, setCurrentStatuses] = useState<
+    CurrentResidentStatus[]
+  >([]);
+
   const [flatNumber, setFlatNumber] = useState("");
   const [building, setBuilding] = useState("");
-  const [flatMessage, setFlatMessage] = useState("");
 
-  const [residents, setResidents] = useState<Resident[]>([]);
-  const [residentsLoading, setResidentsLoading] = useState(true);
-  const [residentsError, setResidentsError] = useState("");
   const [residentName, setResidentName] = useState("");
-  const [residentFlatId, setResidentFlatId] = useState("");
   const [residentPhone, setResidentPhone] = useState("");
-  const [residentMessage, setResidentMessage] = useState("");
+  const [residentFlat, setResidentFlat] = useState("");
 
-  const [secondaryPeople, setSecondaryPeople] = useState<SecondaryPerson[]>([]);
-  const [secondaryLoading, setSecondaryLoading] = useState(true);
-  const [secondaryError, setSecondaryError] = useState("");
-  const [secondaryName, setSecondaryName] = useState("");
-  const [secondaryPhone, setSecondaryPhone] = useState("");
-  const [secondaryCategory, setSecondaryCategory] = useState("Maid");
-  const [secondaryResidentId, setSecondaryResidentId] = useState("");
-  const [secondaryMessage, setSecondaryMessage] = useState("");
-  const [newProviderQR, setNewProviderQR] = useState("");
-  const [showQRScanner, setShowQRScanner] = useState(false);
-  const [qrScanResult, setQrScanResult] = useState("");
-  const [qrScanBusy, setQrScanBusy] = useState(false);
+  const [visitorName, setVisitorName] = useState("");
+  const [visitorPhone, setVisitorPhone] = useState("");
+  const [visitorPurpose, setVisitorPurpose] = useState("");
+  const [visitorFlat, setVisitorFlat] = useState("");
 
-  const [visitors, setVisitors] = useState<Visitor[]>([]);
-  const [visitorsLoading, setVisitorsLoading] = useState(true);
-  const [visitorsError, setVisitorsError] = useState("");
-  const [visitorActionId, setVisitorActionId] = useState<number | null>(null);
+  const [providerName, setProviderName] = useState("");
+  const [providerPhone, setProviderPhone] = useState("");
+  const [providerCategory, setProviderCategory] = useState("Maid");
+  const [providerFlat, setProviderFlat] = useState("");
+  const [providerResident, setProviderResident] = useState("");
 
-  const [flatQR, setFlatQR] = useState<{
-  flatId: number;
-  flatNumber: string;
-  building: string | null;
-  token: string;
-} | null>(null);
+  const [newProviderQR, setNewProviderQR] =
+    useState<SecondaryPersonCreated | null>(null);
 
-const [flatQRLoading, setFlatQRLoading] = useState<number | null>(null);
-const [flatQRMessage, setFlatQRMessage] = useState("");
+  const [flatQR, setFlatQR] = useState<FlatQRCreated | null>(null);
+  const [flatQRLoading, setFlatQRLoading] = useState<number | null>(null);
 
-  const loadVisitors = useCallback(async () => {
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scanResult, setScanResult] =
+    useState<QRValidationResult | null>(null);
+  const [selectedResidentId, setSelectedResidentId] = useState("");
+  const [scanMessage, setScanMessage] = useState("");
+  const [scanning, setScanning] = useState(false);
+
+  const [logSearch, setLogSearch] = useState("");
+
+  const loadAll = useCallback(async () => {
+    setLoading(true);
     try {
-      setVisitors(await getVisitors());
-      setVisitorsError("");
-    } catch (error) {
-      console.error("Failed to load visitors:", error);
-      setVisitorsError(error instanceof Error ? error.message : "Could not load visitors.");
-    } finally {
-      setVisitorsLoading(false);
-    }
-  }, []);
+      const [
+        flatData,
+        residentData,
+        visitorData,
+        providerData,
+        movementData,
+        statusData,
+      ] = await Promise.all([
+        getFlats(),
+        getResidents(),
+        getVisitors(),
+        getSecondaryPeople(),
+        getResidentMovements(),
+        getCurrentResidentStatus(),
+      ]);
 
-  const loadSecondaryPeople = useCallback(async () => {
-    try {
-      setSecondaryPeople(await getSecondaryPeople());
-      setSecondaryError("");
+      setFlats(flatData);
+      setResidents(residentData);
+      setVisitors(visitorData);
+      setProviders(providerData);
+      setMovements(movementData);
+      setCurrentStatuses(statusData);
     } catch (error) {
-      console.error("Failed to load service providers:", error);
-      setSecondaryError(error instanceof Error ? error.message : "Could not load service providers.");
+      setMessage(
+        error instanceof Error ? error.message : "Could not load data"
+      );
     } finally {
-      setSecondaryLoading(false);
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    getFlats()
-      .then((data) => { setFlats(data); setFlatsError(""); })
-      .catch((error) => {
-        console.error("Failed to load flats:", error);
-        setFlatsError(error instanceof Error ? error.message : "Could not load flats.");
-      })
-      .finally(() => setFlatsLoading(false));
+    loadAll();
+  }, [loadAll]);
 
-    getResidents()
-      .then((data) => { setResidents(data); setResidentsError(""); })
-      .catch((error) => {
-        console.error("Failed to load residents:", error);
-        setResidentsError(error instanceof Error ? error.message : "Could not load residents.");
-      })
-      .finally(() => setResidentsLoading(false));
+  // ---------------- FLATS ----------------
 
-    void loadVisitors();
-    void loadSecondaryPeople();
-  }, [loadVisitors, loadSecondaryPeople]);
+  async function handleCreateFlat(e: React.FormEvent) {
+    e.preventDefault();
 
-  useEffect(() => {
-    if (!showQRScanner) return;
-    const scanner = new Html5QrcodeScanner(
-      "gatepass-qr-reader",
-      { fps: 10, qrbox: { width: 230, height: 230 }, rememberLastUsedCamera: true },
-      false
-    );
-    scanner.render(
-      async (decodedText: string) => {
-        if (qrScanBusy) return;
-        setQrScanBusy(true);
-        try {
-          const result = await validateSecondaryQR(decodedText);
-          setQrScanResult(result.valid
-            ? `Verified: ${result.person.full_name} · ${result.person.category} · ${result.person.flat_number ?? "Flat unavailable"}`
-            : "This QR code is not valid.");
-          await scanner.clear();
-        } catch (error) {
-          setQrScanResult(error instanceof Error ? error.message : "QR verification failed.");
-          await scanner.clear().catch(() => undefined);
-        } finally {
-          setQrScanBusy(false);
-        }
-      },
-      () => {}
-    );
-    return () => { void scanner.clear().catch(() => undefined); };
-  }, [showQRScanner]);
-
-  const today = new Date().toDateString();
-  const stats = [
-    { label: "Total Visitors", value: String(visitors.length), icon: Users, color: "blue", change: "All registered visitors" },
-    { label: "Currently Inside", value: String(visitors.filter((v) => v.status === "Inside").length), icon: ShieldCheck, color: "green", change: "Currently on premises" },
-    { label: "Today's Visitors", value: String(visitors.filter((v) => new Date(v.created_at).toDateString() === today).length), icon: Clock, color: "orange", change: "Registered today" },
-    { label: "Registered Flats", value: String(flats.length), icon: LayoutDashboard, color: "purple", change: "Flats in database" },
-  ];
-
-  const filteredVisitors = visitors.filter((visitor) =>
-    [visitor.full_name, visitor.flat_number, visitor.building ?? "", visitor.purpose, visitor.status]
-      .join(" ").toLowerCase().includes(search.toLowerCase())
-  );
-
-  async function handleRegisterVisitor(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (visitorSubmitting) return;
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const fullName = String(data.get("visitorName") ?? "").trim();
-    const phone = String(data.get("phone") ?? "").trim();
-    const purpose = String(data.get("purpose") ?? "").trim();
-    const flatId = Number(visitorFlatId);
-
-    if (!fullName || !phone || !purpose || !Number.isInteger(flatId)) {
-      alert("Please complete all visitor details.");
-      return;
-    }
-    if (!flats.some((flat) => flat.id === flatId)) {
-      alert("Please select a valid registered flat.");
-      return;
-    }
-
-    setVisitorSubmitting(true);
     try {
-      await createVisitor(fullName, flatId, phone, purpose);
-      await loadVisitors();
-      form.reset();
-      setVisitorFlatId("");
-      setShowVisitorForm(false);
-      setActivePage("Visitors");
-      alert("Visitor registered successfully!");
-    } catch (error) {
-      console.error("Visitor registration failed:", error);
-      alert(error instanceof Error ? `Registration failed: ${error.message}` : "Visitor registration failed. Please try again.");
-    } finally {
-      setVisitorSubmitting(false);
-    }
-  }
-
-  async function handleCheckout(visitor: Visitor) {
-    if (visitorActionId !== null) return;
-    if (!window.confirm(`Check out ${visitor.full_name}?`)) return;
-    setVisitorActionId(visitor.id);
-    try {
-      await checkoutVisitor(visitor.id);
-      await loadVisitors();
-    } catch (error) {
-      alert(error instanceof Error ? error.message : "Could not check out visitor.");
-    } finally {
-      setVisitorActionId(null);
-    }
-  }
-
-  async function handleCreateSecondaryPerson(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const resident = residents.find((r) => r.id === Number(secondaryResidentId));
-    if (!resident) {
-      setSecondaryMessage("Please select a valid resident.");
-      return;
-    }
-
-    setSecondaryMessage("Registering service provider...");
-    try {
-      const created = await createSecondaryPerson({
-        full_name: secondaryName.trim(),
-        phone: secondaryPhone.trim(),
-        category: secondaryCategory,
-        resident_id: resident.id,
-        flat_id: resident.flat_id,
+      await createFlat({
+        flat_number: flatNumber.trim(),
+        building: building.trim() || undefined,
       });
-      setSecondaryPeople((current) => [...current, created]);
-      setNewProviderQR(created.qr_token);
-      setSecondaryName("");
-      setSecondaryPhone("");
-      setSecondaryResidentId("");
-      setSecondaryCategory("Maid");
-      setSecondaryMessage("Service provider registered successfully!");
+
+      setFlatNumber("");
+      setBuilding("");
+      setMessage("Flat added successfully.");
+      await loadAll();
     } catch (error) {
-      console.error("Service provider registration failed:", error);
-      setSecondaryMessage(error instanceof Error ? error.message : "Could not register service provider.");
+      setMessage(error instanceof Error ? error.message : "Could not add flat");
     }
   }
 
-  async function handleDeactivateSecondaryPerson(personId: number) {
-    try {
-      await deactivateSecondaryPerson(personId);
-      await loadSecondaryPeople();
-      setSecondaryMessage("Service provider deactivated.");
-    } catch (error) {
-      console.error("Service provider deactivation failed:", error);
-      setSecondaryMessage(error instanceof Error ? error.message : "Could not deactivate service provider.");
-    }
-  }
-
-  function renderVisitorsTable() {
-    return (
-      <article className="panel visitor-panel">
-        <div className="panel-heading">
-          <div>
-            <h3>{activePage === "Dashboard" ? "Recent Visitors" : "Visitor Records"}</h3>
-            <p>Visitor activity retrieved from the GatePass database</p>
-          </div>
-          <span className="live-tag">DATABASE</span>
-        </div>
-        <div className="table-toolbar">
-          <div className="search-box">
-            <Search size={17} />
-            <input type="search" placeholder="Search visitors or flats..." value={search} onChange={(event) => setSearch(event.target.value)} />
-          </div>
-          <span className="records-label">{filteredVisitors.length} records</span>
-        </div>
-        <div className="table-scroll">
-          <table>
-            <thead><tr><th>VISITOR</th><th>DESTINATION</th><th>PURPOSE</th><th>ARRIVAL</th><th>STATUS / ACTION</th></tr></thead>
-            <tbody>
-              {visitorsLoading && <tr><td colSpan={5} className="empty-state">Loading visitors...</td></tr>}
-              {!visitorsLoading && visitorsError && (
-                <tr><td colSpan={5} className="empty-state">{visitorsError} <button type="button" onClick={() => void loadVisitors()}>Retry</button></td></tr>
-              )}
-              {!visitorsLoading && !visitorsError && filteredVisitors.map((visitor) => (
-                <tr key={visitor.id}>
-                  <td>
-                    <div className="visitor-person">
-                      <div className="avatar visitor-avatar">
-                        {visitor.full_name.split(/\s+/).map((part) => part[0] ?? "").join("").slice(0, 2).toUpperCase()}
-                      </div>
-                      <span>{visitor.full_name}</span>
-                    </div>
-                  </td>
-                  <td className="flat-number">{visitor.building ? `${visitor.building} - ${visitor.flat_number}` : visitor.flat_number}</td>
-                  <td>{visitor.purpose}</td>
-                  <td>{new Date(visitor.created_at).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}</td>
-                  <td>
-                    <span className={`badge ${visitor.status === "Inside" ? "badge-green" : "badge-gray"}`}>
-                      <span className="badge-dot" />{visitor.status}
-                    </span>
-                    {visitor.status === "Inside" && (
-                      <button type="button" disabled={visitorActionId !== null} onClick={() => void handleCheckout(visitor)}>
-                        {visitorActionId === visitor.id ? "Checking out..." : "Check Out"}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {!visitorsLoading && !visitorsError && filteredVisitors.length === 0 && (
-                <tr><td colSpan={5} className="empty-state">No matching visitors found.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="panel-footer">{visitors.length} visitor records · Live database</div>
-      </article>
+  async function handleGenerateFlatQR(flat: Flat) {
+    const confirmed = window.confirm(
+      "Generate a new QR code for this flat?\n\n" +
+        "This replaces the previous QR code. Any previously printed QR " +
+        "for this flat will stop working."
     );
+
+    if (!confirmed) return;
+
+    setFlatQRLoading(flat.id);
+    setFlatQR(null);
+
+    try {
+      const result = await generateFlatQR(flat.id);
+      setFlatQR(result);
+      setMessage(`New QR generated for flat ${flat.flat_number}.`);
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Could not generate QR"
+      );
+    } finally {
+      setFlatQRLoading(null);
+    }
+  }
+
+  // ---------------- RESIDENTS ----------------
+
+  async function handleCreateResident(e: React.FormEvent) {
+    e.preventDefault();
+
+    if (!residentFlat) {
+      setMessage("Select a flat first.");
+      return;
+    }
+
+    try {
+      await createResident({
+        full_name: residentName.trim(),
+        phone: residentPhone.trim(),
+        flat_id: Number(residentFlat),
+      });
+
+      setResidentName("");
+      setResidentPhone("");
+      setResidentFlat("");
+      setMessage("Resident added successfully.");
+      await loadAll();
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Could not add resident"
+      );
+    }
+  }
+
+  // ---------------- VISITORS ----------------
+
+  async function handleCreateVisitor(e: React.FormEvent) {
+    e.preventDefault();
+
+    if (!visitorFlat) {
+      setMessage("Select a flat for this visitor.");
+      return;
+    }
+
+    try {
+      await createVisitor({
+        full_name: visitorName.trim(),
+        flat_id: Number(visitorFlat),
+        phone: visitorPhone.trim(),
+        purpose: visitorPurpose.trim(),
+      });
+
+      setVisitorName("");
+      setVisitorPhone("");
+      setVisitorPurpose("");
+      setVisitorFlat("");
+      setMessage("Visitor checked in successfully.");
+      await loadAll();
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Could not register visitor"
+      );
+    }
+  }
+
+  async function handleVisitorCheckout(id: number) {
+    try {
+      await checkoutVisitor(id);
+      setMessage("Visitor checked out.");
+      await loadAll();
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Could not check out visitor"
+      );
+    }
+  }
+
+  // ---------------- SERVICE PROVIDERS ----------------
+
+  async function handleCreateProvider(e: React.FormEvent) {
+    e.preventDefault();
+
+    if (!providerFlat) {
+      setMessage("Select a flat for this service provider.");
+      return;
+    }
+
+    try {
+      const result = await createSecondaryPerson({
+        full_name: providerName.trim(),
+        phone: providerPhone.trim(),
+        category: providerCategory,
+        flat_id: Number(providerFlat),
+        resident_id: providerResident
+          ? Number(providerResident)
+          : null,
+      });
+
+      setNewProviderQR(result);
+      setProviderName("");
+      setProviderPhone("");
+      setProviderCategory("Maid");
+      setProviderFlat("");
+      setProviderResident("");
+      setMessage("Service provider registered.");
+      await loadAll();
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Could not register provider"
+      );
+    }
+  }
+
+  async function handleDeactivateProvider(id: number) {
+    if (!window.confirm("Deactivate this service provider's QR code?")) {
+      return;
+    }
+
+    try {
+      await deactivateSecondaryPerson(id);
+      setMessage("Service provider deactivated.");
+      await loadAll();
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : "Could not deactivate provider"
+      );
+    }
+  }
+
+  // ---------------- QR SCANNER ----------------
+
+  useEffect(() => {
+    if (!scannerOpen) return;
+
+    let scanner: Html5QrcodeScanner | null = null;
+    let handled = false;
+
+    const timer = window.setTimeout(() => {
+      const element = document.getElementById("gatepass-qr-reader");
+      if (!element) return;
+
+      scanner = new Html5QrcodeScanner(
+        "gatepass-qr-reader",
+        {
+          fps: 10,
+          qrbox: { width: 230, height: 230 },
+          rememberLastUsedCamera: true,
+        },
+        false
+      );
+
+      scanner.render(
+        async (decodedText) => {
+          if (handled) return;
+          handled = true;
+
+          try {
+            setScanning(true);
+            const result = await validateQR(decodedText);
+            setScanResult(result);
+            setScanMessage(
+              result.type === "flat"
+                ? `Flat ${result.flat.flat_number} verified. Select the resident.`
+                : `Provider verified: ${result.person.full_name}`
+            );
+
+            await scanner?.clear();
+          } catch (error) {
+            handled = false;
+            setScanMessage(
+              error instanceof Error ? error.message : "QR validation failed"
+            );
+          } finally {
+            setScanning(false);
+          }
+        },
+        () => {
+          // Ignore normal frame-by-frame scan failures.
+        }
+      );
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+      if (scanner) {
+        scanner.clear().catch(() => undefined);
+      }
+    };
+  }, [scannerOpen]);
+
+  function closeScanner() {
+    setScannerOpen(false);
+    setScanResult(null);
+    setSelectedResidentId("");
+    setScanMessage("");
+    setScanning(false);
+  }
+
+  // ---------------- RESIDENT MOVEMENTS ----------------
+
+  async function handleResidentMovement(action: MovementAction) {
+    if (!selectedResidentId) {
+      setScanMessage("Select a resident first.");
+      return;
+    }
+
+    try {
+      await recordResidentMovement(Number(selectedResidentId), action);
+      setScanMessage(`${action} recorded successfully.`);
+      await loadAll();
+
+      // Keep the successful result visible briefly, then reset the scanner.
+      window.setTimeout(() => {
+        closeScanner();
+      }, 900);
+    } catch (error) {
+      setScanMessage(
+        error instanceof Error ? error.message : "Could not record movement"
+      );
+    }
+  }
+
+  function residentStatus(residentId: number) {
+    const status = currentStatuses.find(
+      (item) => item.resident_id === residentId
+    );
+    return status?.status || "Unknown";
+  }
+
+  // ---------------- DOWNLOAD QR ----------------
+
+  function downloadQR(elementId: string, filename: string) {
+    const svg = document.getElementById(elementId);
+
+    if (!(svg instanceof SVGElement)) {
+      setMessage("QR image could not be found.");
+      return;
+    }
+
+    const serializer = new XMLSerializer();
+    const source = serializer.serializeToString(svg);
+    const blob = new Blob([source], {
+      type: "image/svg+xml;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = filename;
+    link.click();
+
+    URL.revokeObjectURL(url);
+  }
+
+  // ---------------- UI HELPERS ----------------
+
+  function flatLabel(flat: Flat) {
+    return `${flat.flat_number}${flat.building ? ` · ${flat.building}` : ""}`;
   }
 
   function renderFlats() {
     return (
-      <section className="panel" style={{ padding: 24 }}>
-        <div className="panel-heading">
-          <div><h3>Registered Flats</h3><p>Manage flats stored in the GatePass database</p></div>
-          <span className="live-tag">DATABASE</span>
-        </div>
-        <form onSubmit={async (event) => {
-          event.preventDefault();
-          setFlatMessage("Registering flat...");
-          try {
-            const newFlat = await createFlat(flatNumber.trim(), building.trim());
-            setFlats((current) => [...current, newFlat]);
-            setFlatNumber(""); setBuilding("");
-            setFlatMessage("Flat registered successfully!");
-            setFlatsError("");
-          } catch (error) {
-            setFlatMessage(error instanceof Error ? error.message : "Could not register flat.");
-          }
-        }} style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
-          <input value={flatNumber} onChange={(event) => setFlatNumber(event.target.value)} placeholder="Flat number (e.g. A-101)" required maxLength={30} />
-          <input value={building} onChange={(event) => setBuilding(event.target.value)} placeholder="Building / tower (optional)" maxLength={60} />
-          <button type="submit">Register Flat</button>
+      <section className="panel">
+        <h2>Flats</h2>
+
+        <form onSubmit={handleCreateFlat} className="form-grid">
+          <input
+            value={flatNumber}
+            onChange={(e) => setFlatNumber(e.target.value)}
+            placeholder="Flat number"
+            required
+          />
+
+          <input
+            value={building}
+            onChange={(e) => setBuilding(e.target.value)}
+            placeholder="Building / Block"
+          />
+
+          <button type="submit">Add Flat</button>
         </form>
-        {flatMessage && <p>{flatMessage}</p>}
-        {flatsLoading && <p>Loading flats...</p>}
-        {flatsError && <p>{flatsError}</p>}
-        {!flatsLoading && !flatsError && flats.length === 0 && <p>No flats registered yet.</p>}
-        {!flatsLoading && !flatsError && flats.map((flat) => (
-          <div key={flat.id} style={{ padding: "12px 0", borderBottom: "1px solid #eee" }}>
-            <strong>{flat.flat_number}</strong>{flat.building && <span> — {flat.building}</span>}
+
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Flat</th>
+                <th>Building</th>
+                <th>QR Code</th>
+              </tr>
+            </thead>
+            <tbody>
+              {flats.map((flat) => (
+                <tr key={flat.id}>
+                  <td>{flat.flat_number}</td>
+                  <td>{flat.building || "—"}</td>
+                  <td>
+                    <button
+                      onClick={() => handleGenerateFlatQR(flat)}
+                      disabled={flatQRLoading === flat.id}
+                    >
+                      {flatQRLoading === flat.id
+                        ? "Generating..."
+                        : "Generate / Regenerate QR"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {flatQR && (
+          <div className="qr-card">
+            <h3>Flat QR Code</h3>
+            <p>
+              {flatQR.flat.flat_number}
+              {flatQR.flat.building
+                ? ` · ${flatQR.flat.building}`
+                : ""}
+            </p>
+
+            <QRCodeSVG
+              id="flat-qr-svg"
+              value={flatQR.qr_token}
+              size={220}
+              level="H"
+              includeMargin
+            />
+
+            <p>
+              Print and place this QR at the resident entry point. Scanning it
+              will ask the guard to select the resident.
+            </p>
+
+            <button
+              onClick={() =>
+                downloadQR(
+                  "flat-qr-svg",
+                  `GatePass-flat-${flatQR.flat.flat_number}.svg`
+                )
+              }
+            >
+              Download QR
+            </button>
+
+            <p className="warning">
+              Regenerating this QR invalidates the previously printed QR.
+            </p>
           </div>
-        ))}
+        )}
       </section>
     );
   }
 
   function renderResidents() {
     return (
-      <section className="panel" style={{ padding: 24 }}>
-        <div className="panel-heading">
-          <div><h3>Resident Management</h3><p>Register residents and assign them to flats</p></div>
-          <span className="live-tag">DATABASE</span>
-        </div>
-        <form onSubmit={async (event) => {
-          event.preventDefault();
-          setResidentMessage("Registering resident...");
-          try {
-            const newResident = await createResident(residentName.trim(), Number(residentFlatId), residentPhone.trim());
-            setResidents((current) => [...current, newResident]);
-            setResidentName(""); setResidentFlatId(""); setResidentPhone("");
-            setResidentMessage("Resident registered successfully!");
-            setResidentsError("");
-          } catch (error) {
-            setResidentMessage(error instanceof Error ? error.message : "Could not register resident.");
-          }
-        }} style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 }}>
-          <input value={residentName} onChange={(event) => setResidentName(event.target.value)} placeholder="Resident full name" required maxLength={100} />
-          <select value={residentFlatId} onChange={(event) => setResidentFlatId(event.target.value)} required>
+      <section className="panel">
+        <h2>Residents</h2>
+
+        <form onSubmit={handleCreateResident} className="form-grid">
+          <input
+            value={residentName}
+            onChange={(e) => setResidentName(e.target.value)}
+            placeholder="Resident full name"
+            required
+          />
+
+          <input
+            value={residentPhone}
+            onChange={(e) => setResidentPhone(e.target.value)}
+            placeholder="Phone (mandatory)"
+          />
+
+          <select
+            value={residentFlat}
+            onChange={(e) => setResidentFlat(e.target.value)}
+            required
+          >
             <option value="">Select flat</option>
-            {flats.map((flat) => <option key={flat.id} value={flat.id}>{flat.flat_number}{flat.building ? ` — ${flat.building}` : ""}</option>)}
+            {flats.map((flat) => (
+              <option key={flat.id} value={flat.id}>
+                {flatLabel(flat)}
+              </option>
+            ))}
           </select>
-          <input value={residentPhone} onChange={(event) => setResidentPhone(event.target.value)} placeholder="Phone (mandatory)" maxLength={20} />
-          <button type="submit" disabled={flats.length === 0}>Register Resident</button>
+
+          <button type="submit">Add Resident</button>
         </form>
-        {flats.length === 0 && !flatsLoading && <p>Register a flat first before adding residents.</p>}
-        {residentMessage && <p>{residentMessage}</p>}
-        {residentsLoading && <p>Loading residents...</p>}
-        {residentsError && <p>{residentsError}</p>}
-        {!residentsLoading && !residentsError && residents.length === 0 && <p>No residents registered yet.</p>}
-        {!residentsLoading && !residentsError && residents.map((resident) => (
-          <div key={resident.id} style={{ padding: "12px 0", borderBottom: "1px solid #eee" }}>
-            <strong>{resident.full_name}</strong>
-            <div>Flat {resident.flat_number}{resident.building ? ` — ${resident.building}` : ""}</div>
-            {resident.phone && <div>{resident.phone}</div>}
-          </div>
-        ))}
+
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Flat</th>
+                <th>Phone</th>
+                <th>Current Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {residents.map((resident) => (
+                <tr key={resident.id}>
+                  <td>{resident.full_name}</td>
+                  <td>{resident.flat_number || resident.flat_id}</td>
+                  <td>{resident.phone || "—"}</td>
+                  <td>{residentStatus(resident.id)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
     );
   }
 
-  return (
-    <div className="app-shell">
-      {mobileMenu && <button className="mobile-overlay" aria-label="Close menu" onClick={() => setMobileMenu(false)} />}
-      <aside className={`sidebar ${mobileMenu ? "sidebar-open" : ""}`}>
-        <div className="brand">
-          <div className="brand-mark"><ShieldCheck size={25} /></div>
-          <div><h1>GatePass</h1><span>COMMUNITY MANAGEMENT</span></div>
-          <button className="icon-button mobile-close" onClick={() => setMobileMenu(false)} aria-label="Close navigation"><X size={20} /></button>
-        </div>
-        <div className="workspace-label">WORKSPACE</div>
-        <nav className="navigation">
-          {navigation.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button key={item.label} className={`nav-item ${activePage === item.label ? "nav-active" : ""}`} onClick={() => { setActivePage(item.label); setMobileMenu(false); }}>
-                <Icon size={19} /><span>{item.label}</span>
-                {item.label === "Visitors" && <span className="nav-count">{visitors.length}</span>}
-              </button>
-            );
-          })}
-        </nav>
-        <div className="sidebar-bottom">
-          <div className="security-card">
-            <div className="security-icon"><ShieldCheck size={20} /></div>
-            <strong>Security overview</strong>
-            <p>Access monitoring dashboard</p>
-            <div className="security-status"><span className="status-dot" />Development preview</div>
-          </div>
-          <div className="profile">
-            <div className="avatar admin-avatar">AD</div>
-            <div className="profile-info"><strong>Society Admin</strong><span>Administrator</span></div>
-            <Settings size={18} className="profile-settings" />
-          </div>
-        </div>
-      </aside>
+  function renderProviders() {
+    return (
+      <section className="panel">
+        <h2>Register Service Provider</h2>
 
-      <main className="main-area">
-        <header className="topbar">
-          <button className="icon-button mobile-menu-button" aria-label="Open navigation" onClick={() => setMobileMenu(true)}><Menu size={22} /></button>
-          <div className="breadcrumb"><span>Workspace</span><span className="breadcrumb-divider">/</span><strong>{activePage}</strong></div>
-          <div className="topbar-right">
-            <div className="system-status"><span className="status-dot" />Preview mode</div>
-            <button className="icon-button notification-button" aria-label="Notifications" onClick={() => alert("Notifications have not been connected yet.")}><Bell size={19} /><span className="notification-dot" /></button>
-            <div className="avatar top-avatar">AD</div>
-          </div>
-        </header>
+        <form onSubmit={handleCreateProvider} className="form-grid">
+          <input
+            value={providerName}
+            onChange={(e) => setProviderName(e.target.value)}
+            placeholder="Full name"
+            required
+          />
 
-        <div className="page-content">
-          <div className="welcome-row">
-            <div>
-              <div className="eyebrow">SOCIETY OPERATIONS</div>
-              <h2>{activePage}</h2>
-              <p className="page-description">
-                {activePage === "Dashboard" ? "Here's what's happening in your community today." : `Manage your community's ${activePage.toLowerCase()} records.`}
-              </p>
-            </div>
-            <button type="button" className="primary-button" style={{ position: "relative", zIndex: 10, pointerEvents: "auto", cursor: "pointer" }} onClick={() => { console.log("Register Visitor clicked"); setShowVisitorForm(true); }}>
-              <Plus size={18} />{activePage === "Dashboard" || activePage === "Visitors" ? "Register Visitor" : "Quick Action"}
+          <input
+            value={providerPhone}
+            onChange={(e) => setProviderPhone(e.target.value)}
+            placeholder="Phone number"
+            required
+          />
+
+          <select
+            value={providerCategory}
+            onChange={(e) => setProviderCategory(e.target.value)}
+          >
+            <option>Maid</option>
+            <option>Milkman</option>
+            <option>Driver</option>
+            <option>Cook</option>
+            <option>Vendor</option>
+            <option>Other</option>
+          </select>
+
+          <select
+            value={providerFlat}
+            onChange={(e) => setProviderFlat(e.target.value)}
+            required
+          >
+            <option value="">Select flat</option>
+            {flats.map((flat) => (
+              <option key={flat.id} value={flat.id}>
+                {flatLabel(flat)}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={providerResident}
+            onChange={(e) => setProviderResident(e.target.value)}
+          >
+            <option value="">Select linked resident (optional)</option>
+            {residents
+              .filter(
+                (resident) =>
+                  !providerFlat ||
+                  resident.flat_id === Number(providerFlat)
+              )
+              .map((resident) => (
+                <option key={resident.id} value={resident.id}>
+                  {resident.full_name}
+                </option>
+              ))}
+          </select>
+
+          <button type="submit">Register & Generate QR</button>
+        </form>
+
+        {newProviderQR && (
+          <div className="qr-card">
+            <h3>Provider QR generated</h3>
+            <p>{newProviderQR.full_name}</p>
+            <QRCodeSVG
+              id="provider-qr-svg"
+              value={newProviderQR.qr_token}
+              size={220}
+              includeMargin
+            />
+            <button
+              onClick={() =>
+                downloadQR(
+                  "provider-qr-svg",
+                  `GatePass-${newProviderQR.full_name}.svg`
+                )
+              }
+            >
+              Download QR
             </button>
           </div>
+        )}
 
-          {activePage === "Dashboard" && (
-            <>
-              <section className="stats-grid">
-                {stats.map((stat) => {
-                  const Icon = stat.icon;
-                  return (
-                    <article className="stat-card" key={stat.label}>
-                      <div className="stat-top"><div className={`stat-icon ${stat.color}`}><Icon size={21} /></div><span className="stat-period">Live</span></div>
-                      <div className="stat-value">{stat.value}</div>
-                      <div className="stat-label">{stat.label}</div>
-                      <div className="stat-footer"><span>{stat.change}</span><ArrowUpRight size={16} /></div>
-                    </article>
-                  );
-                })}
-              </section>
-
-              <section className="overview-grid">
-                {renderVisitorsTable()}
-                <article className="panel activity-panel">
-                  <div className="panel-heading"><div><h3>Access Overview</h3><p>Based on registered visitor records</p></div><span className="live-tag">LIVE</span></div>
-                  <div className="activity-metric"><div className="metric-icon entry-icon"><ArrowDownRight size={19} /></div><div className="metric-details"><span>Currently inside</span><strong>{visitors.filter((v) => v.status === "Inside").length}</strong></div></div>
-                  <div className="activity-metric"><div className="metric-icon exit-icon"><ArrowUpRight size={19} /></div><div className="metric-details"><span>Checked out</span><strong>{visitors.filter((v) => v.status === "Checked Out").length}</strong></div></div>
-                  <div className="security-note"><ShieldCheck size={19} /><div><strong>Visitor tracking</strong><p>Registration and checkout records come from the API.</p></div></div>
-                </article>
-              </section>
-
-              <section className="bottom-grid">
-                <article className="panel quick-panel">
-                  <div className="panel-heading"><div><h3>Quick Actions</h3><p>Common management tasks</p></div></div>
-                  <div className="quick-actions">
-                    <button className="quick-action" onClick={() => setShowVisitorForm(true)}><div className="quick-icon quick-blue"><Plus size={20} /></div><span><strong>Register Visitor</strong><small>Record a new arrival</small></span><ArrowUpRight size={17} /></button>
-                    <button className="quick-action" onClick={() => setActivePage("Residents")}><div className="quick-icon quick-purple"><Users size={20} /></div><span><strong>Manage Residents</strong><small>Residents and flat records</small></span><ArrowUpRight size={17} /></button>
-                    <button className="quick-action" onClick={() => setActivePage("Access Logs")}><div className="quick-icon quick-green"><Clock size={20} /></div><span><strong>View Access Logs</strong><small>Review entry and exit history</small></span><ArrowUpRight size={17} /></button>
-                  </div>
-                </article>
-                <article className="panel vehicle-panel">
-                  <div className="panel-heading"><div><h3>Gate Operations</h3><p>Planned guard-interface features</p></div><Car size={20} /></div>
-                  <div className="gate-feature"><div className="gate-feature-icon"><ShieldCheck size={19} /></div><div><strong>QR verification</strong><p>QR-based identity verification is not implemented yet.</p></div></div>
-                  <div className="gate-feature"><div className="gate-feature-icon"><ClipboardList size={19} /></div><div><strong>Visitor registration</strong><p>Visitor records are saved through the API.</p></div></div>
-                </article>
-              </section>
-              <div style={{ marginTop: 24 }}>{renderFlats()}</div>
-              <div style={{ marginTop: 24 }}>{renderResidents()}</div>
-            </>
-          )}
-
-          {activePage === "Visitors" && renderVisitorsTable()}
-          {activePage === "Residents" && <div id="resident-management">{renderResidents()}</div>}
-
-          {activePage === "Service Providers" && (
-            <section className="panel" style={{ padding: 24 }}>
-              <div className="panel-heading">
-                <div><h3>Service Provider Management</h3><p>Register and manage recurring service providers.</p></div>
-                <span className="live-tag">DATABASE</span>
-              </div>
-              <form onSubmit={handleCreateSecondaryPerson} style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 500, marginBottom: 24 }}>
-                <input value={secondaryName} onChange={(event) => setSecondaryName(event.target.value)} placeholder="Full name" required maxLength={100} />
-                <input value={secondaryPhone} onChange={(event) => setSecondaryPhone(event.target.value)} placeholder="Phone number" maxLength={20} />
-                <select value={secondaryCategory} onChange={(event) => setSecondaryCategory(event.target.value)}>
-                  <option value="Maid">Maid</option><option value="Milkman">Milkman</option><option value="Vendor">Vendor</option><option value="Driver">Driver</option><option value="Other">Other</option>
-                </select>
-                <select value={secondaryResidentId} onChange={(event) => setSecondaryResidentId(event.target.value)} required>
-                  <option value="">Select linked resident</option>
-                  {residents.map((resident) => <option key={resident.id} value={resident.id}>{resident.full_name} — {resident.flat_number}</option>)}
-                </select>
-                <button type="submit" disabled={residents.length === 0}>Register Service Provider</button>
-              </form>
-              {secondaryMessage && <p>{secondaryMessage}</p>}
-              {newProviderQR && (
-                <div style={{ padding: 16, background: "#f0fdf4", marginBottom: 20 }}>
-                  <strong>New provider QR token</strong>
-                  <div style={{ background: "white", display: "inline-block", padding: 14, margin: "12px 0" }}>
-                    <QRCodeSVG value={newProviderQR} size={220} level="H" includeMargin />
-                  </div>
-                  <p style={{ overflowWrap: "anywhere" }}>{newProviderQR}</p>
-                  <small>Save or print this QR code for the registered service provider.</small>
-                </div>
-              )}
-              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 20 }}>
-                <button type="button" onClick={() => { setQrScanResult(""); setShowQRScanner(true); }}>Scan Provider QR</button>
-              </div>
-              <h3>Registered Providers</h3>
-              {secondaryLoading && <p>Loading providers...</p>}
-              {secondaryError && <p>{secondaryError}</p>}
-              {!secondaryLoading && !secondaryError && secondaryPeople.map((person) => (
-                <div key={person.id} style={{ padding: 14, borderBottom: "1px solid #eee", display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
-                  <div>
-                    <strong>{person.full_name}</strong>
-                    <p>{person.category} · {person.flat_number ?? "Flat unavailable"}</p>
-                    <small>{person.active ? "Active" : "Inactive"}</small>
-                  </div>
-                  {person.active && <button type="button" onClick={() => void handleDeactivateSecondaryPerson(person.id)}>Deactivate</button>}
-                </div>
+        <h2>Service Providers</h2>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Category</th>
+                <th>Flat</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {providers.map((person) => (
+                <tr key={person.id}>
+                  <td>{person.full_name}</td>
+                  <td>{person.category}</td>
+                  <td>{person.flat_number || person.flat_id}</td>
+                  <td>{person.active ? "Active" : "Inactive"}</td>
+                  <td>
+                    {person.active && (
+                      <button
+                        onClick={() => handleDeactivateProvider(person.id)}
+                      >
+                        Deactivate
+                      </button>
+                    )}
+                  </td>
+                </tr>
               ))}
-              {!secondaryLoading && !secondaryError && secondaryPeople.length === 0 && <p>No service providers registered yet.</p>}
-            </section>
-          )}
-
-          {activePage === "Access Logs" && (
-            <section className="panel placeholder-panel">
-              <div className="placeholder-icon"><ShieldCheck size={27} /></div>
-              <h3>Access Logs</h3>
-              <p>Visitor arrival and checkout times are stored in visitor records. A dedicated searchable audit log is not implemented yet.</p>
-              <button className="secondary-button" onClick={() => setActivePage("Visitors")}>View visitor records</button>
-            </section>
-          )}
-
-          {activePage === "Settings" && (
-            <section className="panel placeholder-panel">
-              <div className="placeholder-icon"><Settings size={27} /></div>
-              <h3>Settings</h3>
-              <p>Authentication, roles, and society settings are not implemented yet.</p>
-              <span className="coming-soon">INTERFACE IN DEVELOPMENT</span>
-            </section>
-          )}
+            </tbody>
+          </table>
         </div>
+      </section>
+    );
+  }
+
+  function renderVisitors() {
+    return (
+      <section className="panel">
+        <h2>Register Visitor</h2>
+
+        <form onSubmit={handleCreateVisitor} className="form-grid">
+          <input
+            value={visitorName}
+            onChange={(e) => setVisitorName(e.target.value)}
+            placeholder="Visitor full name"
+            required
+          />
+
+          <input
+            value={visitorPhone}
+            onChange={(e) => setVisitorPhone(e.target.value)}
+            placeholder="Contact number"
+            required
+          />
+
+          <input
+            value={visitorPurpose}
+            onChange={(e) => setVisitorPurpose(e.target.value)}
+            placeholder="Purpose of visit"
+            required
+          />
+
+          <select
+            value={visitorFlat}
+            onChange={(e) => setVisitorFlat(e.target.value)}
+            required
+          >
+            <option value="">Select flat</option>
+            {flats.map((flat) => (
+              <option key={flat.id} value={flat.id}>
+                {flatLabel(flat)}
+              </option>
+            ))}
+          </select>
+
+          <button type="submit">Register Visitor / Check In</button>
+        </form>
+
+        <h2>Visitor Records</h2>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Flat</th>
+                <th>Purpose</th>
+                <th>Entry</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visitors.map((visitor) => (
+                <tr key={visitor.id}>
+                  <td>{visitor.full_name}</td>
+                  <td>{visitor.flat_number || visitor.flat_id}</td>
+                  <td>{visitor.purpose}</td>
+                  <td>
+                    {new Date(visitor.created_at).toLocaleString()}
+                  </td>
+                  <td>{visitor.status}</td>
+                  <td>
+                    {visitor.status === "Inside" && (
+                      <button
+                        onClick={() => handleVisitorCheckout(visitor.id)}
+                      >
+                        Check Out
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    );
+  }
+
+  function renderAccessLogs() {
+    const filtered = movements.filter((movement) => {
+      const search = logSearch.toLowerCase();
+
+      return (
+        movement.full_name?.toLowerCase().includes(search) ||
+        movement.flat_number?.toLowerCase().includes(search) ||
+        movement.action.toLowerCase().includes(search)
+      );
+    });
+
+    return (
+      <section className="panel">
+        <h2>Resident Access Logs</h2>
+
+        <input
+          value={logSearch}
+          onChange={(e) => setLogSearch(e.target.value)}
+          placeholder="Search resident, flat or action"
+        />
+
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Resident</th>
+                <th>Flat</th>
+                <th>Action</th>
+                <th>Date & Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((movement) => (
+                <tr key={movement.id}>
+                  <td>{movement.full_name}</td>
+                  <td>{movement.flat_number || movement.flat_id}</td>
+                  <td>{movement.action}</td>
+                  <td>
+                    {new Date(movement.created_at).toLocaleString()}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <h2>Residents Currently Inside / Outside</h2>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Resident</th>
+                <th>Flat</th>
+                <th>Current Status</th>
+                <th>Last Movement</th>
+              </tr>
+            </thead>
+            <tbody>
+              {currentStatuses.map((status) => (
+                <tr key={status.resident_id}>
+                  <td>{status.full_name}</td>
+                  <td>{status.flat_number}</td>
+                  <td>{status.status}</td>
+                  <td>
+                    {status.created_at
+                      ? new Date(status.created_at).toLocaleString()
+                      : "No movement recorded"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    );
+  }
+
+  function renderDashboard() {
+    const insideVisitors = visitors.filter(
+      (visitor) => visitor.status === "Inside"
+    ).length;
+
+    const insideResidents = currentStatuses.filter(
+      (resident) => resident.status === "Inside"
+    ).length;
+
+    return (
+      <>
+        <div className="stats-grid">
+          <div className="stat-card">
+            <span>Total Flats</span>
+            <h2>{flats.length}</h2>
+          </div>
+          <div className="stat-card">
+            <span>Residents</span>
+            <h2>{residents.length}</h2>
+          </div>
+          <div className="stat-card">
+            <span>Service Providers</span>
+            <h2>{providers.filter((p) => p.active).length}</h2>
+          </div>
+          <div className="stat-card">
+            <span>Visitors Inside</span>
+            <h2>{insideVisitors}</h2>
+          </div>
+          <div className="stat-card">
+            <span>Residents Inside</span>
+            <h2>{insideResidents}</h2>
+          </div>
+        </div>
+
+        <section className="panel">
+          <h2>Gate Operations</h2>
+          <p>
+            Scan a flat QR to record a resident's entry or exit. Scan a
+            service-provider QR to verify the provider.
+          </p>
+          <button onClick={() => setScannerOpen(true)}>
+            Open QR Scanner
+          </button>
+        </section>
+
+        {renderFlats()}
+      </>
+    );
+  }
+
+  function renderPage() {
+    switch (activePage) {
+      case "Dashboard":
+        return renderDashboard();
+      case "Residents":
+        return renderResidents();
+      case "Service Providers":
+        return renderProviders();
+      case "Visitors":
+        return renderVisitors();
+      case "Access Logs":
+        return renderAccessLogs();
+      case "Settings":
+        return (
+          <section className="panel">
+            <h2>Settings</h2>
+            <p>Settings and configuration options will be added here.</p>
+          </section>
+        );
+      default:
+        return renderDashboard();
+    }
+  }
+
+  return (
+    <div className="app">
+      <aside className="sidebar">
+        <h2 className="brand">GatePass</h2>
+        <p className="sidebar-subtitle">Visitor Management</p>
+
+        <nav>
+          {(
+            [
+              "Dashboard",
+              "Residents",
+              "Service Providers",
+              "Visitors",
+              "Access Logs",
+              "Settings",
+            ] as Page[]
+          ).map((page) => (
+            <button
+              key={page}
+              className={activePage === page ? "active" : ""}
+              onClick={() => setActivePage(page)}
+            >
+              {page}
+            </button>
+          ))}
+        </nav>
+      </aside>
+
+      <main className="main-content">
+        <header className="topbar">
+          <div>
+            <h1>{activePage}</h1>
+            <p>GatePass Society Management System</p>
+          </div>
+
+          <button onClick={() => setScannerOpen(true)}>
+            Scan QR
+          </button>
+        </header>
+
+        {message && (
+          <div className="app-message">
+            <span>{message}</span>
+            <button onClick={() => setMessage("")}>Dismiss</button>
+          </div>
+        )}
+
+        {loading && <p>Loading data...</p>}
+
+        {renderPage()}
       </main>
 
-      {showQRScanner && (
-        <div className="modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget) setShowQRScanner(false); }}>
-          <section className="visitor-modal" style={{ maxWidth: 520 }}>
-            <div className="modal-heading">
-              <div><span className="eyebrow">GATE OPERATIONS</span><h3>Scan Service Provider QR</h3></div>
-              <button type="button" className="icon-button" onClick={() => setShowQRScanner(false)} aria-label="Close scanner"><X size={20} /></button>
+      {scannerOpen && (
+        <div className="modal-backdrop">
+          <div className="modal">
+            <div className="modal-header">
+              <h2>Gate QR Scanner</h2>
+              <button onClick={closeScanner}>Close</button>
             </div>
-            <div id="gatepass-qr-reader" />
-            {qrScanBusy && <p>Verifying QR code...</p>}
-            {qrScanResult && <p role="status" style={{ padding: 12, background: "#f0fdf4", borderRadius: 8 }}>{qrScanResult}</p>}
-            <small>Camera access is required. Use a secure HTTPS connection and allow camera permission when prompted.</small>
-          </section>
-        </div>
-      )}
 
-      {showVisitorForm && (
-        <div className="modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget) setShowVisitorForm(false); }}>
-          <form className="visitor-modal" onSubmit={handleRegisterVisitor}>
-            <div className="modal-heading">
-              <div><span className="eyebrow">GATE OPERATIONS</span><h3>Register Visitor</h3></div>
-              <button type="button" className="icon-button" onClick={() => setShowVisitorForm(false)} disabled={visitorSubmitting} aria-label="Close form"><X size={20} /></button>
-            </div>
-            <label>Visitor name<input name="visitorName" required maxLength={100} placeholder="Enter full name" /></label>
-            <label>Contact number<input name="phone" required type="tel" inputMode="tel" maxLength={20} placeholder="Enter phone number" /></label>
-            <label>Destination flat
-              <select name="destination" value={visitorFlatId} onChange={(event) => setVisitorFlatId(event.target.value)} required disabled={flatsLoading || flats.length === 0 || visitorSubmitting}>
-                <option value="">{flatsLoading ? "Loading flats..." : "Select destination flat"}</option>
-                {flats.map((flat) => <option key={flat.id} value={flat.id}>{flat.building ? `${flat.building} - ${flat.flat_number}` : flat.flat_number}</option>)}
-              </select>
-            </label>
-            <label>Purpose of visit
-              <select name="purpose" required defaultValue="">
-                <option value="" disabled>Select purpose</option>
-                <option value="Personal Visit">Personal Visit</option><option value="Delivery">Delivery</option><option value="Maintenance">Maintenance</option><option value="Service Provider">Service Provider</option><option value="Other">Other</option>
-              </select>
-            </label>
-            <div className="form-notice">Development preview. Use fictional test information only.</div>
+            {!scanResult && (
+              <>
+                <p>
+                  Scan a flat QR or an active service-provider QR.
+                </p>
+                <div id="gatepass-qr-reader" />
+              </>
+            )}
+
+            {scanning && <p>Validating QR...</p>}
+
+            {scanMessage && <p>{scanMessage}</p>}
+
+            {scanResult?.type === "flat" && (
+              <div className="scan-result">
+                <h3>
+                  Flat {scanResult.flat.flat_number}
+                  {scanResult.flat.building
+                    ? ` · ${scanResult.flat.building}`
+                    : ""}
+                </h3>
+
+                {scanResult.residents.length === 0 ? (
+                  <p>No residents are registered under this flat.</p>
+                ) : (
+                  <>
+                    <label htmlFor="resident-select">
+                      Select resident
+                    </label>
+
+                    <select
+                      id="resident-select"
+                      value={selectedResidentId}
+                      onChange={(e) =>
+                        setSelectedResidentId(e.target.value)
+                      }
+                    >
+                      <option value="">Choose resident</option>
+                      {scanResult.residents.map((resident) => (
+                        <option key={resident.id} value={resident.id}>
+                          {resident.full_name} —{" "}
+                          {residentStatus(resident.id)}
+                        </option>
+                      ))}
+                    </select>
+
+                    {selectedResidentId && (
+                      <div className="movement-actions">
+                        <p>
+                          Current status:{" "}
+                          <strong>
+                            {residentStatus(Number(selectedResidentId))}
+                          </strong>
+                        </p>
+
+                        {residentStatus(Number(selectedResidentId)) ===
+                          "Inside" ? (
+                          <button
+                            onClick={() =>
+                              handleResidentMovement("Check Out")
+                            }
+                          >
+                            Record Check Out
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() =>
+                              handleResidentMovement("Check In")
+                            }
+                          >
+                            Record Check In
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {scanResult?.type === "secondary" && (
+              <div className="scan-result">
+                <h3>Service Provider Verified</h3>
+                <p>
+                  <strong>Name:</strong>{" "}
+                  {scanResult.person.full_name}
+                </p>
+                <p>
+                  <strong>Category:</strong>{" "}
+                  {scanResult.person.category}
+                </p>
+                <p>
+                  <strong>Flat:</strong>{" "}
+                  {scanResult.person.flat_number}
+                </p>
+                <p>
+                  <strong>Linked Resident:</strong>{" "}
+                  {scanResult.person.primary_resident || "Not specified"}
+                </p>
+                <p>
+                  <strong>Status:</strong>{" "}
+                  {scanResult.person.active ? "Active" : "Inactive"}
+                </p>
+                <p>
+                  This QR has been verified. Provider movement logging is
+                  not yet included in this workflow.
+                </p>
+              </div>
+            )}
+
             <div className="modal-actions">
-              <button type="button" className="secondary-button" onClick={() => setShowVisitorForm(false)} disabled={visitorSubmitting}>Cancel</button>
-              <button type="submit" className="primary-button" disabled={visitorSubmitting || flatsLoading || flats.length === 0}>{visitorSubmitting ? "Registering..." : "Register Visitor"}</button>
+              <button onClick={closeScanner}>Close Scanner</button>
             </div>
-          </form>
+          </div>
         </div>
       )}
-
-      <footer className="app-footer">
-        <span>GatePass © 2026</span>
-        <span>Society access management · Development preview</span>
-      </footer>
     </div>
   );
 }

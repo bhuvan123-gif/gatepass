@@ -29,7 +29,7 @@ import {
 
 import { QRCodeSVG } from "qrcode.react";
 import { Html5QrcodeScanner } from "html5-qrcode";
-import { useEffect as useReactEffect, useRef } from "react";
+
 
 type Page =
   | "Dashboard"

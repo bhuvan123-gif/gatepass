@@ -1,6 +1,38 @@
 
 const API_BASE_URL = "https://gatepass-api-eb51.onrender.com";
 
+// Shared API request handler
+async function apiRequest<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...options,
+    headers: {
+      Accept: "application/json",
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...options.headers,
+    },
+  });
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const message =
+      typeof data?.detail === "string"
+        ? data.detail
+        : `Request failed with status ${response.status}`;
+
+    throw new Error(message);
+  }
+
+  return data as T;
+}
+
+// ===============================
+// FLATS
+// ===============================
+
 export type Flat = {
   id: number;
   flat_number: string;
@@ -9,39 +41,25 @@ export type Flat = {
 };
 
 export async function getFlats(): Promise<Flat[]> {
-  const response = await fetch(`${API_BASE_URL}/flats`);
-
-  if (!response.ok) {
-    throw new Error("Could not load flats from GatePass API");
-  }
-
-  return response.json();
+  return apiRequest<Flat[]>("/flats");
 }
 
 export async function createFlat(
   flat_number: string,
   building: string
 ): Promise<Flat> {
-  const response = await fetch(`${API_BASE_URL}/flats`, {
+  return apiRequest<Flat>("/flats", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
     body: JSON.stringify({
-      flat_number,
-      building: building || null,
+      flat_number: flat_number.trim(),
+      building: building.trim() || null,
     }),
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => null);
-    throw new Error(
-      error?.detail || "Could not register flat"
-    );
-  }
-
-  return response.json();
 }
+
+// ===============================
+// RESIDENTS
+// ===============================
 
 export type Resident = {
   id: number;
@@ -54,13 +72,7 @@ export type Resident = {
 };
 
 export async function getResidents(): Promise<Resident[]> {
-  const response = await fetch(`${API_BASE_URL}/residents`);
-
-  if (!response.ok) {
-    throw new Error("Could not load residents from GatePass API");
-  }
-
-  return response.json();
+  return apiRequest<Resident[]>("/residents");
 }
 
 export async function createResident(
@@ -68,24 +80,19 @@ export async function createResident(
   flat_id: number,
   phone: string
 ): Promise<Resident> {
-  const response = await fetch(`${API_BASE_URL}/residents`, {
+  return apiRequest<Resident>("/residents", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      full_name,
-      flat_id,
-      phone: phone || null,
+      full_name: full_name.trim(),
+      flat_id: Number(flat_id),
+      phone: phone.trim() || null,
     }),
   });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => null);
-    throw new Error(error?.detail || "Could not register resident");
-  }
-
-  return response.json();
 }
 
+// ===============================
+// VISITORS
+// ===============================
 
 export type Visitor = {
   id: number;
@@ -100,15 +107,8 @@ export type Visitor = {
   exited_at: string | null;
 };
 
-
 export async function getVisitors(): Promise<Visitor[]> {
-  const response = await fetch(`${API_BASE_URL}/visitors`);
-
-  if (!response.ok) {
-    throw new Error("Failed to load visitors");
-  }
-
-  return response.json();
+  return apiRequest<Visitor[]>("/visitors");
 }
 
 export async function createVisitor(
@@ -117,37 +117,90 @@ export async function createVisitor(
   phone: string,
   purpose: string
 ): Promise<Visitor> {
-  const response = await fetch(`${API_BASE_URL}/visitors`, {
+  return apiRequest<Visitor>("/visitors", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
     body: JSON.stringify({
-      full_name,
-      flat_id,
-      phone,
-      purpose,
+      full_name: full_name.trim(),
+      flat_id: Number(flat_id),
+      phone: phone.trim(),
+      purpose: purpose.trim(),
     }),
   });
-
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || "Failed to register visitor");
-  }
-
-  return response.json();
 }
 
 export async function checkoutVisitor(
   visitorId: number
 ): Promise<void> {
-  const response = await fetch(
-    `${API_BASE_URL}/visitors/${visitorId}/checkout`,
+  await apiRequest<unknown>(`/visitors/${visitorId}/checkout`, {
+    method: "PATCH",
+  });
+}
+
+// ===============================
+// SECONDARY PEOPLE
+// ===============================
+
+export type SecondaryPerson = {
+  id: number;
+  full_name: string;
+  phone: string | null;
+  category: string;
+  resident_id: number;
+  flat_id: number;
+  active: boolean;
+  created_at: string;
+  primary_resident?: string;
+  flat_number?: string;
+};
+
+export type SecondaryPersonCreate = {
+  full_name: string;
+  phone?: string;
+  category: string;
+  resident_id: number;
+  flat_id: number;
+};
+
+export type SecondaryPersonCreated = SecondaryPerson & {
+  qr_token: string;
+};
+
+export async function getSecondaryPeople(): Promise<SecondaryPerson[]> {
+  return apiRequest<SecondaryPerson[]>("/secondary-people");
+}
+
+export async function createSecondaryPerson(
+  person: SecondaryPersonCreate
+): Promise<SecondaryPersonCreated> {
+  return apiRequest<SecondaryPersonCreated>("/secondary-people", {
+    method: "POST",
+    body: JSON.stringify({
+      ...person,
+      full_name: person.full_name.trim(),
+      phone: person.phone?.trim() || "",
+      resident_id: Number(person.resident_id),
+      flat_id: Number(person.flat_id),
+    }),
+  });
+}
+
+export async function validateSecondaryQR(
+  token: string
+): Promise<{
+  valid: boolean;
+  person: SecondaryPerson;
+}> {
+  return apiRequest("/qr/validate", {
+    method: "POST",
+    body: JSON.stringify({ token }),
+  });
+}
+
+export async function deactivateSecondaryPerson(
+  personId: number
+): Promise<SecondaryPerson> {
+  return apiRequest<SecondaryPerson>(
+    `/secondary-people/${personId}/deactivate`,
     { method: "PATCH" }
   );
-
-  if (!response.ok) {
-    const message = await response.text();
-    throw new Error(message || "Failed to check out visitor");
-  }
 }

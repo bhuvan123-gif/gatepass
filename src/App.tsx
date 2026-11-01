@@ -126,6 +126,7 @@ export default function App() {
   const [qrScanBusy, setQrScanBusy] = useState(false);
   const [selectedMovementResident, setSelectedMovementResident] = useState("");
   const [movementSubmitting, setMovementSubmitting] = useState(false);
+  const [residentActionId, setResidentActionId] = useState<number | null>(null);
 
   // ---------------- DATA LOADERS ----------------
   const loadVisitorAccessLogs = useCallback(async () => {
@@ -585,6 +586,37 @@ export default function App() {
       setMovementSubmitting(false);
     }
   }
+  async function handleResidentMovementDirect(
+  resident: Resident,
+  action: MovementAction
+) {
+  if (residentActionId !== null) return;
+
+  const confirmed = window.confirm(
+    `${action} ${resident.full_name}?`
+  );
+
+  if (!confirmed) return;
+
+  setResidentActionId(resident.id);
+  setMovementError("");
+
+  try {
+    await recordResidentMovement(resident.id, action);
+
+    await loadResidentMovements();
+
+    alert(`${resident.full_name}: ${action} recorded successfully.`);
+  } catch (error) {
+    alert(
+      error instanceof Error
+        ? error.message
+        : "Could not record resident movement."
+    );
+  } finally {
+    setResidentActionId(null);
+  }
+}
 
   // ---------------- QR DOWNLOAD ----------------
 
@@ -954,10 +986,8 @@ export default function App() {
 function renderResidents() {
   return (
     <>
-      {/* FLAT REGISTRATION AND QR GENERATION */}
       {renderFlats()}
 
-      {/* RESIDENT MANAGEMENT */}
       <section
         className="panel"
         id="resident-management"
@@ -966,7 +996,7 @@ function renderResidents() {
         <div className="panel-heading">
           <div>
             <h3>Resident Management</h3>
-            <p>Register residents and assign them to flats</p>
+            <p>Register residents and manage their entry and exit</p>
           </div>
           <span className="live-tag">DATABASE</span>
         </div>
@@ -1022,34 +1052,93 @@ function renderResidents() {
         {residentsLoading && <p>Loading residents...</p>}
         {residentsError && <p role="alert">{residentsError}</p>}
 
-        {!residentsLoading && !residentsError && residents.length === 0 && (
-          <p>No residents registered yet.</p>
-        )}
+        {!residentsLoading &&
+          !residentsError &&
+          residents.length === 0 && (
+            <p>No residents registered yet.</p>
+          )}
 
         {!residentsLoading &&
           !residentsError &&
-          residents.map((resident) => (
-            <div
-              key={resident.id}
-              style={{
-                padding: "12px 0",
-                borderBottom: "1px solid #eee",
-              }}
-            >
-              <strong>{resident.full_name}</strong>
+          residents.map((resident) => {
+            const status = residentStatus(resident.id);
+            const isProcessing = residentActionId === resident.id;
 
-              <div>
-                Flat {resident.flat_number ?? resident.flat_id}
-                {resident.building ? ` — ${resident.building}` : ""}
+            return (
+              <div
+                key={resident.id}
+                style={{
+                  padding: "16px 0",
+                  borderBottom: "1px solid #eee",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 16,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div>
+                  <strong>{resident.full_name}</strong>
+
+                  <div>
+                    Flat {resident.flat_number ?? resident.flat_id}
+                    {resident.building
+                      ? ` — ${resident.building}`
+                      : ""}
+                  </div>
+
+                  {resident.phone && <div>{resident.phone}</div>}
+
+                  <span
+                    className={`badge ${
+                      status === "Inside"
+                        ? "badge-green"
+                        : "badge-gray"
+                    }`}
+                  >
+                    <span className="badge-dot" />
+                    {status}
+                  </span>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  {status === "Inside" ? (
+                    <button
+                      type="button"
+                      disabled={isProcessing || residentActionId !== null}
+                      onClick={() =>
+                        void handleResidentMovementDirect(
+                          resident,
+                          "Check Out"
+                        )
+                      }
+                    >
+                      {isProcessing ? "Recording..." : "Check Out"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={isProcessing || residentActionId !== null}
+                      onClick={() =>
+                        void handleResidentMovementDirect(
+                          resident,
+                          "Check In"
+                        )
+                      }
+                    >
+                      {isProcessing ? "Recording..." : "Check In"}
+                    </button>
+                  )}
+                </div>
               </div>
-
-              {resident.phone && <div>{resident.phone}</div>}
-
-              <small>
-                Current status: {residentStatus(resident.id)}
-              </small>
-            </div>
-          ))}
+            );
+          })}
       </section>
     </>
   );

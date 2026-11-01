@@ -117,7 +117,7 @@ export default function App() {
       false
     );
     scanner.render(
-      async (decodedText) => {
+      async (decodedText: string) => {
         if (qrScanBusy) return;
         setQrScanBusy(true);
         try {

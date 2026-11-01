@@ -1197,6 +1197,30 @@ export default function App() {
               level="H"
               includeMargin
             />
+            <div style={{ marginTop: "16px", textAlign: "center" }}>
+  <p><strong>QR Token (for manual entry)</strong></p>
+  <code
+    style={{
+      display: "block",
+      maxWidth: "320px",
+      overflowWrap: "anywhere",
+      padding: "10px",
+      background: "#f1f5f9",
+      borderRadius: "8px",
+      margin: "0 auto",
+      color: "#1e293b",
+    }}
+  >
+    {flatQR.qr_token}
+  </code>
+
+  <button
+    type="button"
+    onClick={() => navigator.clipboard.writeText(flatQR.qr_token)}
+  >
+    Copy QR Token
+  </button>
+</div>
 
             <div style={{ width: "100%", textAlign: "center" }}>
               <strong>Resident QR Token</strong>

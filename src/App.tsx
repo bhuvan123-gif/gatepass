@@ -1010,7 +1010,8 @@ const [newProviderQR, setNewProviderQR] = useState("");
       )}
   </section>
 )}
-
+</section>
+)}
 
           {activePage === "Access Logs" && (
             <section className="panel placeholder-panel">

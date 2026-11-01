@@ -895,8 +895,121 @@ const [newProviderQR, setNewProviderQR] = useState("");
             <div id="resident-management">{renderResidents()}</div>
           )}
 
-          {activePage === "Service Providers" && (
-            <section className="panel placeholder-panel">
+         {activePage === "Service Providers" && (
+  <section className="panel" style={{ padding: 24 }}>
+    <div className="panel-heading">
+      <div>
+        <h3>Service Provider Management</h3>
+        <p>Register and manage recurring service providers.</p>
+      </div>
+      <span className="live-tag">DATABASE</span>
+    </div>
+
+    <form
+      onSubmit={handleCreateSecondaryPerson}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        maxWidth: 500,
+        marginBottom: 24,
+      }}
+    >
+      <input
+        value={secondaryName}
+        onChange={(e) => setSecondaryName(e.target.value)}
+        placeholder="Full name"
+        required
+      />
+
+      <input
+        value={secondaryPhone}
+        onChange={(e) => setSecondaryPhone(e.target.value)}
+        placeholder="Phone number"
+      />
+
+      <select
+        value={secondaryCategory}
+        onChange={(e) => setSecondaryCategory(e.target.value)}
+      >
+        <option value="Maid">Maid</option>
+        <option value="Milkman">Milkman</option>
+        <option value="Vendor">Vendor</option>
+        <option value="Driver">Driver</option>
+        <option value="Other">Other</option>
+      </select>
+
+      <select
+        value={secondaryResidentId}
+        onChange={(e) => setSecondaryResidentId(e.target.value)}
+        required
+      >
+        <option value="">Select linked resident</option>
+        {residents.map((resident) => (
+          <option key={resident.id} value={resident.id}>
+            {resident.full_name} — {resident.flat_number}
+          </option>
+        ))}
+      </select>
+
+      <button type="submit" disabled={residents.length === 0}>
+        Register Service Provider
+      </button>
+    </form>
+
+    {secondaryMessage && <p>{secondaryMessage}</p>}
+
+    {newProviderQR && (
+      <div style={{ padding: 16, background: "#f0fdf4", marginBottom: 20 }}>
+        <strong>New provider QR token</strong>
+        <p style={{ overflowWrap: "anywhere" }}>{newProviderQR}</p>
+        <small>Keep this token private. We'll add a scannable QR display next.</small>
+      </div>
+    )}
+
+    <h3>Registered Providers</h3>
+
+    {secondaryLoading && <p>Loading providers...</p>}
+    {secondaryError && <p>{secondaryError}</p>}
+
+    {!secondaryLoading && !secondaryError &&
+      secondaryPeople.map((person) => (
+        <div
+          key={person.id}
+          style={{
+            padding: 14,
+            borderBottom: "1px solid #eee",
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            alignItems: "center",
+          }}
+        >
+          <div>
+            <strong>{person.full_name}</strong>
+            <p>
+              {person.category} · {person.flat_number ?? "Flat unavailable"}
+            </p>
+            <small>{person.active ? "Active" : "Inactive"}</small>
+          </div>
+
+          {person.active && (
+            <button
+              type="button"
+              onClick={() => void handleDeactivateSecondaryPerson(person.id)}
+            >
+              Deactivate
+            </button>
+          )}
+        </div>
+      ))}
+
+    {!secondaryLoading && !secondaryError &&
+      secondaryPeople.length === 0 && (
+        <p>No service providers registered yet.</p>
+      )}
+  </section>
+)}
               <div className="placeholder-icon">
                 <UserRoundCog size={27} />
               </div>

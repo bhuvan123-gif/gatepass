@@ -8,9 +8,14 @@ import {
   getVisitors,
   createVisitor,
   checkoutVisitor,
+  getSecondaryPeople,
+  createSecondaryPerson,
+  deactivateSecondaryPerson,
   type Flat,
   type Resident,
   type Visitor,
+  type SecondaryPerson,
+  type SecondaryPersonCreated,
 } from "./api";
 import {
   LayoutDashboard,

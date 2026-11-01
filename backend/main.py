@@ -1,461 +1,312 @@
 
-from datetime import datetime, timezone
 import os
+import logging
+from contextlib import contextmanager
+from datetime import datetime
+from typing import Optional
 
 import psycopg
+from psycopg.rows import dict_row
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("gatepass")
 
-app = FastAPI(
-    title="GatePass API",
-    description="Society access and visitor management API",
-    version="1.0.0",
-)
+app = FastAPI(title="GatePass API", version="1.0.0")
 
-# Temporary development configuration.
-# Restrict origins and protect endpoints before production.
+# Allow the deployed frontend to call this API.
+# For production, replace "*" with your exact frontend origin.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
 def get_database_url():
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        raise HTTPException(
-            status_code=500,
-            detail="Database configuration missing",
-        )
-    return database_url
+    url = os.getenv("DATABASE_URL")
+    if not url:
+        raise RuntimeError("DATABASE_URL is not configured in Render.")
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+    return url
 
 
-def get_connection():
-    return psycopg.connect(
+@contextmanager
+def db_connection():
+    with psycopg.connect(
         get_database_url(),
-        connect_timeout=5,
-        sslmode="require",
-    )
+        row_factory=dict_row,
+        connect_timeout=10,
+    ) as conn:
+        yield conn
 
 
-# --------------------
-# API health
-# --------------------
+def init_database():
+    with db_connection() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS flats (
+                id SERIAL PRIMARY KEY,
+                flat_number TEXT NOT NULL UNIQUE,
+                building TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS residents (
+                id SERIAL PRIMARY KEY,
+                full_name TEXT NOT NULL,
+                flat_id INTEGER NOT NULL REFERENCES flats(id),
+                phone TEXT,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS visitors (
+                id SERIAL PRIMARY KEY,
+                full_name TEXT NOT NULL,
+                flat_id INTEGER NOT NULL REFERENCES flats(id),
+                phone TEXT NOT NULL,
+                purpose TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'Inside',
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                exited_at TIMESTAMPTZ
+            )
+        """)
+        conn.commit()
 
-@app.get("/")
-def home():
-    return {
-        "app": "GatePass",
-        "status": "running",
-        "message": "GatePass API is online",
-    }
 
-
-@app.get("/health")
-def health_check():
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
-
-
-@app.get("/health/db")
-def database_health_check():
+@app.on_event("startup")
+def startup():
     try:
-        with get_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT 1")
-                cursor.fetchone()
-
-        return {"status": "connected", "database": "PostgreSQL"}
-
-    except HTTPException:
-        raise
+        init_database()
+        logger.info("GatePass database initialized successfully.")
     except Exception:
-        raise HTTPException(
-            status_code=500,
-            detail="Database connection failed. Check server configuration.",
-        )
+        logger.exception("GatePass database initialization failed.")
+        # Keep startup errors visible in Render logs.
+        raise
 
-
-# --------------------
-# Request models
-# --------------------
 
 class FlatCreate(BaseModel):
-    flat_number: str = Field(min_length=1, max_length=30)
-    building: str | None = Field(default=None, max_length=50)
+    flat_number: str = Field(min_length=1, max_length=50)
+    building: str = Field(default="", max_length=100)
 
 
 class ResidentCreate(BaseModel):
-    full_name: str = Field(min_length=1, max_length=100)
-    flat_id: int = Field(gt=0)
-    phone: str | None = Field(default=None, max_length=20)
+    full_name: str = Field(min_length=1, max_length=150)
+    flat_id: int
+    phone: str = Field(default="", max_length=30)
 
 
 class VisitorCreate(BaseModel):
-    full_name: str = Field(min_length=1, max_length=100)
-    flat_id: int = Field(gt=0)
-    phone: str = Field(min_length=1, max_length=20)
-    purpose: str = Field(min_length=1, max_length=50)
+    full_name: str = Field(min_length=1, max_length=150)
+    flat_id: int
+    phone: str = Field(min_length=1, max_length=30)
+    purpose: str = Field(min_length=1, max_length=300)
 
 
-# --------------------
-# Database setup
-# --------------------
+@app.get("/")
+def root():
+    return {"message": "GatePass API is running", "docs": "/docs"}
 
-@app.post("/setup")
-def setup_database():
+
+@app.get("/health")
+def health():
     try:
-        with get_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS flats (
-                        id BIGSERIAL PRIMARY KEY,
-                        flat_number VARCHAR(30) NOT NULL UNIQUE,
-                        building VARCHAR(50),
-                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                    )
-                """)
-
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS residents (
-                        id BIGSERIAL PRIMARY KEY,
-                        full_name VARCHAR(100) NOT NULL,
-                        flat_id BIGINT NOT NULL
-                            REFERENCES flats(id) ON DELETE RESTRICT,
-                        phone VARCHAR(20),
-                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-                    )
-                """)
-
-                cursor.execute("""
-                    CREATE TABLE IF NOT EXISTS visitors (
-                        id BIGSERIAL PRIMARY KEY,
-                        full_name VARCHAR(100) NOT NULL,
-                        flat_id BIGINT NOT NULL
-                            REFERENCES flats(id) ON DELETE RESTRICT,
-                        phone VARCHAR(20) NOT NULL,
-                        purpose VARCHAR(50) NOT NULL,
-                        status VARCHAR(20) NOT NULL DEFAULT 'Inside',
-                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                        exited_at TIMESTAMPTZ
-                    )
-                """)
-
-        return {
-            "status": "success",
-            "message": "Flats, residents, and visitors tables are ready",
-        }
-
-    except HTTPException:
-        raise
+        with db_connection() as conn:
+            conn.execute("SELECT 1")
+        return {"status": "ok", "database": "connected"}
     except Exception:
+        logger.exception("Health check database failure.")
         raise HTTPException(
-            status_code=500,
-            detail="Database setup failed",
-        )
-
-
-# --------------------
-# Flats
-# --------------------
-
-@app.post("/flats")
-def create_flat(flat: FlatCreate):
-    try:
-        with get_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO flats (flat_number, building)
-                    VALUES (%s, %s)
-                    RETURNING id, flat_number, building, created_at
-                    """,
-                    (flat.flat_number.strip(), flat.building),
-                )
-                row = cursor.fetchone()
-
-                return {
-                    "id": row[0],
-                    "flat_number": row[1],
-                    "building": row[2],
-                    "created_at": row[3],
-                }
-
-    except psycopg.errors.UniqueViolation:
-        raise HTTPException(
-            status_code=409,
-            detail="This flat number is already registered",
-        )
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(
-            status_code=500,
-            detail="Could not register flat",
+            status_code=503,
+            detail="Database connection failed",
         )
 
 
 @app.get("/flats")
-def list_flats():
+def get_flats():
     try:
-        with get_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute("""
-                    SELECT id, flat_number, building, created_at
-                    FROM flats
-                    ORDER BY flat_number
-                """)
-                rows = cursor.fetchall()
-
-                return [
-                    {
-                        "id": row[0],
-                        "flat_number": row[1],
-                        "building": row[2],
-                        "created_at": row[3],
-                    }
-                    for row in rows
-                ]
-
-    except HTTPException:
-        raise
+        with db_connection() as conn:
+            rows = conn.execute("""
+                SELECT id, flat_number, building, created_at
+                FROM flats
+                ORDER BY building NULLS FIRST, flat_number
+            """).fetchall()
+        return rows
     except Exception:
-        raise HTTPException(
-            status_code=500,
-            detail="Could not retrieve flats",
-        )
+        logger.exception("GET /flats failed")
+        raise HTTPException(status_code=500, detail="Could not load flats")
 
 
-# --------------------
-# Residents
-# --------------------
+@app.post("/flats", status_code=201)
+def create_flat(data: FlatCreate):
+    flat_number = data.flat_number.strip()
+    building = data.building.strip() or None
 
-@app.post("/residents")
-def create_resident(resident: ResidentCreate):
+    if not flat_number:
+        raise HTTPException(status_code=422, detail="Flat number is required")
+
     try:
-        with get_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO residents (full_name, flat_id, phone)
-                    VALUES (%s, %s, %s)
-                    RETURNING id, full_name, flat_id, phone, created_at
-                    """,
-                    (
-                        resident.full_name.strip(),
-                        resident.flat_id,
-                        resident.phone.strip() if resident.phone else None,
-                    ),
-                )
-                row = cursor.fetchone()
-
-                return {
-                    "id": row[0],
-                    "full_name": row[1],
-                    "flat_id": row[2],
-                    "phone": row[3],
-                    "created_at": row[4],
-                }
-
-    except psycopg.errors.ForeignKeyViolation:
-        raise HTTPException(
-            status_code=404,
-            detail="That flat ID does not exist",
-        )
-    except HTTPException:
-        raise
+        with db_connection() as conn:
+            row = conn.execute("""
+                INSERT INTO flats (flat_number, building)
+                VALUES (%s, %s)
+                RETURNING id, flat_number, building, created_at
+            """, (flat_number, building)).fetchone()
+        return row
+    except psycopg.errors.UniqueViolation:
+        raise HTTPException(status_code=409, detail="This flat already exists")
     except Exception:
-        raise HTTPException(
-            status_code=500,
-            detail="Could not register resident",
-        )
+        logger.exception("POST /flats failed")
+        raise HTTPException(status_code=500, detail="Could not create flat")
 
 
 @app.get("/residents")
-def list_residents():
+def get_residents():
     try:
-        with get_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute("""
-                    SELECT
-                        r.id,
-                        r.full_name,
-                        r.flat_id,
-                        f.flat_number,
-                        f.building,
-                        r.phone,
-                        r.created_at
-                    FROM residents r
-                    JOIN flats f ON f.id = r.flat_id
-                    ORDER BY r.full_name
-                """)
-                rows = cursor.fetchall()
+        with db_connection() as conn:
+            rows = conn.execute("""
+                SELECT
+                    r.id, r.full_name, r.flat_id, r.phone, r.created_at,
+                    f.flat_number, f.building
+                FROM residents r
+                JOIN flats f ON f.id = r.flat_id
+                ORDER BY r.full_name
+            """).fetchall()
+        return rows
+    except Exception:
+        logger.exception("GET /residents failed")
+        raise HTTPException(status_code=500, detail="Could not load residents")
 
-                return [
-                    {
-                        "id": row[0],
-                        "full_name": row[1],
-                        "flat_id": row[2],
-                        "flat_number": row[3],
-                        "building": row[4],
-                        "phone": row[5],
-                        "created_at": row[6],
-                    }
-                    for row in rows
-                ]
 
+@app.post("/residents", status_code=201)
+def create_resident(data: ResidentCreate):
+    try:
+        with db_connection() as conn:
+            row = conn.execute("""
+                INSERT INTO residents (full_name, flat_id, phone)
+                VALUES (%s, %s, %s)
+                RETURNING id, full_name, flat_id, phone, created_at
+            """, (
+                data.full_name.strip(),
+                data.flat_id,
+                data.phone.strip() or None,
+            )).fetchone()
+
+            flat = conn.execute("""
+                SELECT flat_number, building FROM flats WHERE id = %s
+            """, (data.flat_id,)).fetchone()
+
+            if not flat:
+                raise HTTPException(status_code=404, detail="Flat not found")
+
+            row["flat_number"] = flat["flat_number"]
+            row["building"] = flat["building"]
+        return row
     except HTTPException:
         raise
     except Exception:
-        raise HTTPException(
-            status_code=500,
-            detail="Could not retrieve residents",
-        )
-
-
-# --------------------
-# Visitors
-# --------------------
-
-@app.post("/visitors")
-def create_visitor(visitor: VisitorCreate):
-    try:
-        with get_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    INSERT INTO visitors (
-                        full_name, flat_id, phone, purpose
-                    )
-                    VALUES (%s, %s, %s, %s)
-                    RETURNING
-                        id, full_name, flat_id, phone, purpose,
-                        status, created_at, exited_at
-                    """,
-                    (
-                        visitor.full_name.strip(),
-                        visitor.flat_id,
-                        visitor.phone.strip(),
-                        visitor.purpose.strip(),
-                    ),
-                )
-                row = cursor.fetchone()
-
-                return {
-                    "id": row[0],
-                    "full_name": row[1],
-                    "flat_id": row[2],
-                    "phone": row[3],
-                    "purpose": row[4],
-                    "status": row[5],
-                    "created_at": row[6],
-                    "exited_at": row[7],
-                }
-
-    except psycopg.errors.ForeignKeyViolation:
-        raise HTTPException(
-            status_code=404,
-            detail="Destination flat not found",
-        )
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(
-            status_code=500,
-            detail="Could not register visitor",
-        )
+        logger.exception("POST /residents failed")
+        raise HTTPException(status_code=500, detail="Could not create resident")
 
 
 @app.get("/visitors")
-def list_visitors():
+def get_visitors():
     try:
-        with get_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute("""
-                    SELECT
-                        v.id,
-                        v.full_name,
-                        v.flat_id,
-                        f.flat_number,
-                        f.building,
-                        v.phone,
-                        v.purpose,
-                        v.status,
-                        v.created_at,
-                        v.exited_at
-                    FROM visitors v
-                    JOIN flats f ON f.id = v.flat_id
-                    ORDER BY v.created_at DESC
-                """)
-                rows = cursor.fetchall()
+        with db_connection() as conn:
+            rows = conn.execute("""
+                SELECT
+                    v.id,
+                    v.full_name,
+                    v.flat_id,
+                    f.flat_number,
+                    f.building,
+                    v.phone,
+                    v.purpose,
+                    v.status,
+                    v.created_at,
+                    v.exited_at
+                FROM visitors v
+                JOIN flats f ON f.id = v.flat_id
+                ORDER BY v.created_at DESC, v.id DESC
+            """).fetchall()
+        return rows
+    except Exception:
+        logger.exception("GET /visitors failed")
+        raise HTTPException(status_code=500, detail="Could not load visitors")
 
-                return [
-                    {
-                        "id": row[0],
-                        "full_name": row[1],
-                        "flat_id": row[2],
-                        "flat_number": row[3],
-                        "building": row[4],
-                        "phone": row[5],
-                        "purpose": row[6],
-                        "status": row[7],
-                        "created_at": row[8],
-                        "exited_at": row[9],
-                    }
-                    for row in rows
-                ]
 
+@app.post("/visitors", status_code=201)
+def create_visitor(data: VisitorCreate):
+    try:
+        with db_connection() as conn:
+            flat = conn.execute("""
+                SELECT id FROM flats WHERE id = %s
+            """, (data.flat_id,)).fetchone()
+
+            if not flat:
+                raise HTTPException(status_code=404, detail="Flat not found")
+
+            row = conn.execute("""
+                INSERT INTO visitors
+                    (full_name, flat_id, phone, purpose, status)
+                VALUES (%s, %s, %s, %s, 'Inside')
+                RETURNING id, full_name, flat_id, phone, purpose,
+                          status, created_at, exited_at
+            """, (
+                data.full_name.strip(),
+                data.flat_id,
+                data.phone.strip(),
+                data.purpose.strip(),
+            )).fetchone()
+
+            flat_details = conn.execute("""
+                SELECT flat_number, building FROM flats WHERE id = %s
+            """, (data.flat_id,)).fetchone()
+
+            row["flat_number"] = flat_details["flat_number"]
+            row["building"] = flat_details["building"]
+        return row
     except HTTPException:
         raise
     except Exception:
-        raise HTTPException(
-            status_code=500,
-            detail="Could not retrieve visitors",
-        )
-        
+        logger.exception("POST /visitors failed")
+        raise HTTPException(status_code=500, detail="Could not register visitor")
+
+
 @app.patch("/visitors/{visitor_id}/checkout")
 def checkout_visitor(visitor_id: int):
     try:
-        with get_connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    """
-                    UPDATE visitors
-                    SET status = 'Checked Out',
-                        exited_at = CURRENT_TIMESTAMP
-                    WHERE id = %s
-                      AND status = 'Inside'
-                    RETURNING id, full_name, status, exited_at
-                    """,
-                    (visitor_id,),
-                )
+        with db_connection() as conn:
+            row = conn.execute("""
+                UPDATE visitors
+                SET status = 'Checked Out', exited_at = NOW()
+                WHERE id = %s AND status = 'Inside'
+                RETURNING id, full_name, status, exited_at
+            """, (visitor_id,)).fetchone()
 
-                row = cursor.fetchone()
+            if row:
+                return row
 
-                if row is None:
-                    raise HTTPException(
-                        status_code=404,
-                        detail="Visitor not found or already checked out",
-                    )
+            exists = conn.execute(
+                "SELECT id, status FROM visitors WHERE id = %s",
+                (visitor_id,),
+            ).fetchone()
 
-                return {
-                    "id": row[0],
-                    "full_name": row[1],
-                    "status": row[2],
-                    "exited_at": row[3],
-                }
+            if not exists:
+                raise HTTPException(status_code=404, detail="Visitor not found")
 
+            raise HTTPException(
+                status_code=409,
+                detail="Visitor has already checked out",
+            )
     except HTTPException:
         raise
     except Exception:
-        raise HTTPException(
-            status_code=500,
-            detail="Could not check out visitor",
-        )
-
+        logger.exception("PATCH visitor checkout failed")
+        raise HTTPException(status_code=500, detail="Could not check out visitor")

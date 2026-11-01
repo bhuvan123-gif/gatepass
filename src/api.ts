@@ -1,7 +1,6 @@
+export const API_BASE_URL =
+  "https://gatepass-api-eb51.onrender.com";
 
-const API_BASE_URL = "https://gatepass-api-eb51.onrender.com";
-
-// Shared API request handler
 async function apiRequest<T>(
   endpoint: string,
   options: RequestInit = {}
@@ -9,218 +8,248 @@ async function apiRequest<T>(
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
     headers: {
-      Accept: "application/json",
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      ...options.headers,
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
     },
   });
 
-  const data = await response.json().catch(() => null);
-
   if (!response.ok) {
-    const message =
-      typeof data?.detail === "string"
-        ? data.detail
-        : `Request failed with status ${response.status}`;
+    let message = `Request failed (${response.status})`;
+
+    try {
+      const error = await response.json();
+      message = error.detail || message;
+    } catch {
+      // Keep the fallback message if the response isn't JSON.
+    }
 
     throw new Error(message);
   }
 
-  return data as T;
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return response.json();
 }
 
-// ===============================
-// FLATS
-// ===============================
+function post<T>(endpoint: string, body: unknown): Promise<T> {
+  return apiRequest<T>(endpoint, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
 
-export type Flat = {
+// ---------------- FLATS ----------------
+
+export interface Flat {
   id: number;
   flat_number: string;
   building: string | null;
-  created_at: string;
-};
+  created_at?: string;
+}
 
-export async function getFlats(): Promise<Flat[]> {
+export interface FlatCreate {
+  flat_number: string;
+  building?: string;
+}
+
+export function getFlats() {
   return apiRequest<Flat[]>("/flats");
 }
 
-export async function createFlat(
-  flat_number: string,
-  building: string
-): Promise<Flat> {
-  return apiRequest<Flat>("/flats", {
-    method: "POST",
-    body: JSON.stringify({
-      flat_number: flat_number.trim(),
-      building: building.trim() || null,
-    }),
-  });
+export function createFlat(data: FlatCreate) {
+  return post<Flat>("/flats", data);
 }
 
-// ===============================
-// RESIDENTS
-// ===============================
+export interface FlatQRCreated {
+  valid: boolean;
+  type: "flat";
+  flat: Flat;
+  qr_token: string;
+}
 
-export type Resident = {
+export function generateFlatQR(flatId: number) {
+  return post<FlatQRCreated>(`/flats/${flatId}/qr`, {});
+}
+
+// ---------------- RESIDENTS ----------------
+
+export interface Resident {
   id: number;
   full_name: string;
   flat_id: number;
-  flat_number: string;
-  building: string | null;
-  phone: string | null;
-  created_at: string;
-};
+  phone: string;
+  flat_number?: string;
+  building?: string | null;
+  created_at?: string;
+}
 
-export async function getResidents(): Promise<Resident[]> {
+export interface ResidentCreate {
+  full_name: string;
+  flat_id: number;
+  phone?: string;
+}
+
+export function getResidents() {
   return apiRequest<Resident[]>("/residents");
 }
 
-export async function createResident(
-  full_name: string,
-  flat_id: number,
-  phone: string
-): Promise<Resident> {
-  return apiRequest<Resident>("/residents", {
-    method: "POST",
-    body: JSON.stringify({
-      full_name: full_name.trim(),
-      flat_id: Number(flat_id),
-      phone: phone.trim() || null,
-    }),
-  });
+export function createResident(data: ResidentCreate) {
+  return post<Resident>("/residents", data);
 }
 
-// ===============================
-// VISITORS
-// ===============================
+// ---------------- VISITORS ----------------
 
-export type Visitor = {
+export interface Visitor {
   id: number;
   full_name: string;
   flat_id: number;
-  flat_number: string;
-  building: string | null;
+  flat_number?: string;
+  building?: string | null;
   phone: string;
   purpose: string;
   status: string;
   created_at: string;
-  exited_at: string | null;
-};
+  exited_at?: string | null;
+}
 
-export async function getVisitors(): Promise<Visitor[]> {
+export interface VisitorCreate {
+  full_name: string;
+  flat_id: number;
+  phone: string;
+  purpose: string;
+}
+
+export function getVisitors() {
   return apiRequest<Visitor[]>("/visitors");
 }
 
-export async function createVisitor(
-  full_name: string,
-  flat_id: number,
-  phone: string,
-  purpose: string
-): Promise<Visitor> {
-  return apiRequest<Visitor>("/visitors", {
-    method: "POST",
-    body: JSON.stringify({
-      full_name: full_name.trim(),
-      flat_id: Number(flat_id),
-      phone: phone.trim(),
-      purpose: purpose.trim(),
-    }),
-  });
+export function createVisitor(data: VisitorCreate) {
+  return post<Visitor>("/visitors", data);
 }
 
-export async function checkoutVisitor(
-  visitorId: number
-): Promise<void> {
-  await apiRequest<unknown>(`/visitors/${visitorId}/checkout`, {
+export function checkoutVisitor(visitorId: number) {
+  return apiRequest<Visitor>(`/visitors/${visitorId}/checkout`, {
     method: "PATCH",
   });
 }
 
-// ===============================
-// SECONDARY PEOPLE
-// ===============================
+// ---------------- SERVICE PROVIDERS ----------------
 
-export type SecondaryPerson = {
+export interface SecondaryPerson {
   id: number;
   full_name: string;
-  phone: string | null;
+  phone: string;
   category: string;
-  resident_id: number;
+  resident_id: number | null;
   flat_id: number;
   active: boolean;
-  created_at: string;
-  primary_resident?: string;
+  created_at?: string;
+  primary_resident?: string | null;
   flat_number?: string;
-};
+  building?: string | null;
+}
 
-export type SecondaryPersonCreate = {
+export interface SecondaryPersonCreate {
   full_name: string;
-  phone?: string;
+  phone: string;
   category: string;
-  resident_id: number;
+  resident_id?: number | null;
   flat_id: number;
-};
+}
 
-export type SecondaryPersonCreated = SecondaryPerson & {
+export interface SecondaryPersonCreated extends SecondaryPerson {
   qr_token: string;
-};
+}
 
-export async function getSecondaryPeople(): Promise<SecondaryPerson[]> {
+export function getSecondaryPeople() {
   return apiRequest<SecondaryPerson[]>("/secondary-people");
 }
 
-export async function createSecondaryPerson(
-  person: SecondaryPersonCreate
-): Promise<SecondaryPersonCreated> {
-  return apiRequest<SecondaryPersonCreated>("/secondary-people", {
-    method: "POST",
-    body: JSON.stringify({
-      ...person,
-      full_name: person.full_name.trim(),
-      phone: person.phone?.trim() || "",
-      resident_id: Number(person.resident_id),
-      flat_id: Number(person.flat_id),
-    }),
-  });
+export function createSecondaryPerson(data: SecondaryPersonCreate) {
+  return post<SecondaryPersonCreated>("/secondary-people", data);
 }
 
-export async function validateSecondaryQR(
-  token: string
-): Promise<{
-  valid: boolean;
-  person: SecondaryPerson;
-}> {
-  return apiRequest("/qr/validate", {
-    method: "POST",
-    body: JSON.stringify({ token }),
-  });
-}
-
-export async function deactivateSecondaryPerson(
-  personId: number
-): Promise<SecondaryPerson> {
+export function deactivateSecondaryPerson(personId: number) {
   return apiRequest<SecondaryPerson>(
     `/secondary-people/${personId}/deactivate`,
     { method: "PATCH" }
   );
 }
 
-export type FlatQRCreated = {
-  valid: boolean;
-  type: "flat";
-  flat: {
-    id: number;
-    flat_number: string;
-    building: string | null;
-  };
-  qr_token: string;
-};
+// ---------------- QR VALIDATION ----------------
 
-export async function generateFlatQR(
-  flatId: number
-): Promise<FlatQRCreated> {
-  return apiRequest<FlatQRCreated>(`/flats/${flatId}/qr`, {
-    method: "POST",
-  });
+export interface FlatQRValidation {
+  valid: true;
+  type: "flat";
+  flat: Flat;
+  residents: Resident[];
 }
 
+export interface SecondaryQRValidation {
+  valid: true;
+  type: "secondary";
+  person: SecondaryPerson;
+}
+
+export type QRValidationResult =
+  | FlatQRValidation
+  | SecondaryQRValidation;
+
+export function validateQR(token: string) {
+  return post<QRValidationResult>("/qr/validate", { token });
+}
+
+// Backward-compatible alias if another component still uses this name.
+export function validateSecondaryQR(token: string) {
+  return validateQR(token);
+}
+
+// ---------------- RESIDENT MOVEMENTS ----------------
+
+export type MovementAction = "Check In" | "Check Out";
+
+export interface ResidentMovement {
+  id: number;
+  resident_id: number;
+  flat_id: number;
+  action: MovementAction;
+  created_at: string;
+  full_name?: string;
+  phone?: string;
+  flat_number?: string;
+  building?: string | null;
+  status?: "Inside" | "Outside";
+}
+
+export interface CurrentResidentStatus {
+  resident_id: number;
+  full_name: string;
+  flat_id: number;
+  flat_number: string;
+  building: string | null;
+  action: MovementAction | null;
+  created_at: string | null;
+  status: "Inside" | "Outside" | "Unknown";
+}
+
+export function getResidentMovements() {
+  return apiRequest<ResidentMovement[]>("/resident-movements");
+}
+
+export function getCurrentResidentStatus() {
+  return apiRequest<CurrentResidentStatus[]>(
+    "/resident-movements/current"
+  );
+}
+
+export function recordResidentMovement(
+  residentId: number,
+  action: MovementAction
+) {
+  return post<ResidentMovement>("/resident-movements", {
+    resident_id: residentId,
+    action,
+  });
+}

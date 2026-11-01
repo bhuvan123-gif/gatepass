@@ -204,3 +204,23 @@ export async function deactivateSecondaryPerson(
     { method: "PATCH" }
   );
 }
+
+export type FlatQRCreated = {
+  valid: boolean;
+  type: "flat";
+  flat: {
+    id: number;
+    flat_number: string;
+    building: string | null;
+  };
+  qr_token: string;
+};
+
+export async function generateFlatQR(
+  flatId: number
+): Promise<FlatQRCreated> {
+  return apiRequest<FlatQRCreated>(`/flats/${flatId}/qr`, {
+    method: "POST",
+  });
+}
+

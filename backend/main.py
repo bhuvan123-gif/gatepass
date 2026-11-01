@@ -1,10 +1,9 @@
-
+import os
 import secrets
 import hashlib
-import os
 import logging
 from contextlib import contextmanager
-from typing import Optional
+from typing import Optional, Literal
 
 import psycopg
 from psycopg.rows import dict_row
@@ -13,9 +12,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("gatepass")
+logger = logging.getLogger(__name__)
 
-app = FastAPI(title="GatePass API", version="1.0.0")
+app = FastAPI(title="GatePass API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,13 +27,10 @@ app.add_middleware(
 
 def get_database_url():
     url = os.getenv("DATABASE_URL")
-
     if not url:
-        raise RuntimeError("DATABASE_URL is not configured in Render.")
-
+        raise RuntimeError("DATABASE_URL is not configured")
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
-
     return url
 
 
@@ -43,204 +39,176 @@ def db_connection():
     with psycopg.connect(
         get_database_url(),
         row_factory=dict_row,
-        connect_timeout=10,
-    ) as conn:
-        yield conn
+    ) as connection:
+        yield connection
 
 
 def hash_qr_token(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+    return hashlib.sha256(token.encode()).hexdigest()
 
 
 def init_database():
-    with db_connection() as conn:
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS flats (
+                    id SERIAL PRIMARY KEY,
+                    flat_number TEXT UNIQUE NOT NULL,
+                    building TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
 
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS flats (
-                id SERIAL PRIMARY KEY,
-                flat_number TEXT NOT NULL UNIQUE,
-                building TEXT,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-        """)
+            cursor.execute("""
+                ALTER TABLE flats
+                ADD COLUMN IF NOT EXISTS qr_token_hash TEXT UNIQUE
+            """)
 
-        # Add flat QR token hash to existing databases.
-        conn.execute("""
-            ALTER TABLE flats
-            ADD COLUMN IF NOT EXISTS qr_token_hash TEXT UNIQUE
-        """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS residents (
+                    id SERIAL PRIMARY KEY,
+                    full_name TEXT NOT NULL,
+                    flat_id INTEGER NOT NULL REFERENCES flats(id),
+                    phone TEXT DEFAULT '',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
 
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS residents (
-                id SERIAL PRIMARY KEY,
-                full_name TEXT NOT NULL,
-                flat_id INTEGER NOT NULL REFERENCES flats(id),
-                phone TEXT,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-        """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS visitors (
+                    id SERIAL PRIMARY KEY,
+                    full_name TEXT NOT NULL,
+                    flat_id INTEGER NOT NULL REFERENCES flats(id),
+                    phone TEXT NOT NULL,
+                    purpose TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'Inside',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    exited_at TIMESTAMP
+                )
+            """)
 
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS visitors (
-                id SERIAL PRIMARY KEY,
-                full_name TEXT NOT NULL,
-                flat_id INTEGER NOT NULL REFERENCES flats(id),
-                phone TEXT NOT NULL,
-                purpose TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'Inside',
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                exited_at TIMESTAMPTZ
-            )
-        """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS secondary_people (
+                    id SERIAL PRIMARY KEY,
+                    full_name TEXT NOT NULL,
+                    phone TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    resident_id INTEGER REFERENCES residents(id),
+                    flat_id INTEGER NOT NULL REFERENCES flats(id),
+                    qr_token_hash TEXT UNIQUE NOT NULL,
+                    active BOOLEAN DEFAULT TRUE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
 
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS secondary_people (
-                id SERIAL PRIMARY KEY,
-                full_name TEXT NOT NULL,
-                phone TEXT,
-                category TEXT NOT NULL,
-                resident_id INTEGER NOT NULL REFERENCES residents(id),
-                flat_id INTEGER NOT NULL REFERENCES flats(id),
-                qr_token_hash TEXT NOT NULL UNIQUE,
-                active BOOLEAN NOT NULL DEFAULT TRUE,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-        """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS resident_movements (
+                    id SERIAL PRIMARY KEY,
+                    resident_id INTEGER NOT NULL REFERENCES residents(id),
+                    flat_id INTEGER NOT NULL REFERENCES flats(id),
+                    action TEXT NOT NULL CHECK (
+                        action IN ('Check In', 'Check Out')
+                    ),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
 
-        conn.commit()
+        connection.commit()
 
 
 @app.on_event("startup")
 def startup():
-    try:
-        init_database()
-        logger.info("GatePass database initialized successfully.")
-    except Exception:
-        logger.exception("GatePass database initialization failed.")
-        raise
+    init_database()
 
-
-# -------------------------
-# REQUEST MODELS
-# -------------------------
 
 class FlatCreate(BaseModel):
-    flat_number: str = Field(min_length=1, max_length=50)
-    building: str = Field(default="", max_length=100)
+    flat_number: str = Field(min_length=1)
+    building: Optional[str] = None
 
 
 class ResidentCreate(BaseModel):
-    full_name: str = Field(min_length=1, max_length=150)
+    full_name: str = Field(min_length=1)
     flat_id: int
-    phone: str = Field(default="", max_length=30)
-
-
-class SecondaryPersonCreate(BaseModel):
-    full_name: str = Field(min_length=1, max_length=150)
-    phone: str = Field(default="", max_length=30)
-    category: str = Field(min_length=1, max_length=50)
-    resident_id: int
-    flat_id: int
+    phone: str = ""
 
 
 class VisitorCreate(BaseModel):
-    full_name: str = Field(min_length=1, max_length=150)
+    full_name: str = Field(min_length=1)
     flat_id: int
-    phone: str = Field(min_length=1, max_length=30)
-    purpose: str = Field(min_length=1, max_length=300)
+    phone: str = Field(min_length=1)
+    purpose: str = Field(min_length=1)
 
 
-# -------------------------
-# GENERAL ROUTES
-# -------------------------
+class SecondaryPersonCreate(BaseModel):
+    full_name: str = Field(min_length=1)
+    phone: str = Field(min_length=1)
+    category: str = Field(min_length=1)
+    resident_id: Optional[int] = None
+    flat_id: int
+
+
+class QRValidateRequest(BaseModel):
+    token: str = Field(min_length=1)
+
+
+class ResidentMovementCreate(BaseModel):
+    resident_id: int
+    action: Literal["Check In", "Check Out"]
+
 
 @app.get("/")
 def root():
-    return {
-        "message": "GatePass API is running",
-        "docs": "/docs"
-    }
+    return {"message": "GatePass API is running"}
 
 
 @app.get("/health")
 def health():
+    return {"status": "healthy"}
+
+
+@app.get("/health/db")
+def database_health():
     try:
-        with db_connection() as conn:
-            conn.execute("SELECT 1")
-
-        return {
-            "status": "ok",
-            "database": "connected"
-        }
-
+        with db_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+                cursor.fetchone()
+        return {"database": "connected"}
     except Exception:
-        logger.exception("Health check database failure.")
+        logger.exception("Database health check failed")
+        raise HTTPException(status_code=500, detail="Database connection failed")
 
-        raise HTTPException(
-            status_code=503,
-            detail="Database connection failed"
-        )
-
-
-# -------------------------
-# FLATS
-# -------------------------
 
 @app.get("/flats")
 def get_flats():
-    try:
-        with db_connection() as conn:
-            rows = conn.execute("""
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
                 SELECT id, flat_number, building, created_at
                 FROM flats
-                ORDER BY building NULLS FIRST, flat_number
-            """).fetchall()
-
-        return rows
-
-    except Exception:
-        logger.exception("GET /flats failed")
-
-        raise HTTPException(
-            status_code=500,
-            detail="Could not load flats"
-        )
+                ORDER BY building, flat_number
+            """)
+            return cursor.fetchall()
 
 
-@app.post("/flats", status_code=201)
+@app.post("/flats")
 def create_flat(data: FlatCreate):
-    flat_number = data.flat_number.strip()
-    building = data.building.strip() or None
-
-    if not flat_number:
-        raise HTTPException(
-            status_code=422,
-            detail="Flat number is required"
-        )
-
     try:
-        with db_connection() as conn:
-            row = conn.execute("""
-                INSERT INTO flats (flat_number, building)
-                VALUES (%s, %s)
-                RETURNING id, flat_number, building, created_at
-            """, (flat_number, building)).fetchone()
-
-        return row
-
+        with db_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO flats (flat_number, building)
+                    VALUES (%s, %s)
+                    RETURNING id, flat_number, building, created_at
+                """, (data.flat_number.strip(), data.building))
+                result = cursor.fetchone()
+            connection.commit()
+            return result
     except psycopg.errors.UniqueViolation:
-        raise HTTPException(
-            status_code=409,
-            detail="This flat already exists"
-        )
-
+        raise HTTPException(status_code=409, detail="Flat already exists")
     except Exception:
-        logger.exception("POST /flats failed")
-
-        raise HTTPException(
-            status_code=500,
-            detail="Could not create flat"
-        )
+        logger.exception("Could not create flat")
+        raise HTTPException(status_code=500, detail="Could not create flat")
 
 
 @app.post("/flats/{flat_id}/qr")
@@ -248,463 +216,351 @@ def generate_flat_qr(flat_id: int):
     token = secrets.token_urlsafe(32)
     token_hash = hash_qr_token(token)
 
-    try:
-        with db_connection() as conn:
-            flat = conn.execute("""
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
                 UPDATE flats
                 SET qr_token_hash = %s
                 WHERE id = %s
                 RETURNING id, flat_number, building
-            """, (token_hash, flat_id)).fetchone()
+            """, (token_hash, flat_id))
+            flat = cursor.fetchone()
 
-            if not flat:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Flat not found"
-                )
+        connection.commit()
 
-        return {
-            "valid": True,
-            "type": "flat",
-            "flat": flat,
-            "qr_token": token
-        }
+    if not flat:
+        raise HTTPException(status_code=404, detail="Flat not found")
 
-    except HTTPException:
-        raise
+    return {
+        "valid": True,
+        "type": "flat",
+        "flat": flat,
+        "qr_token": token,
+    }
 
-    except Exception:
-        logger.exception("Flat QR generation failed")
-
-        raise HTTPException(
-            status_code=500,
-            detail="Could not generate flat QR"
-        )
-
-
-# -------------------------
-# RESIDENTS
-# -------------------------
 
 @app.get("/residents")
 def get_residents():
-    try:
-        with db_connection() as conn:
-            rows = conn.execute("""
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
                 SELECT
-                    r.id,
-                    r.full_name,
-                    r.flat_id,
-                    r.phone,
-                    r.created_at,
-                    f.flat_number,
-                    f.building
+                    r.id, r.full_name, r.flat_id, r.phone, r.created_at,
+                    f.flat_number, f.building
                 FROM residents r
                 JOIN flats f ON f.id = r.flat_id
                 ORDER BY r.full_name
-            """).fetchall()
-
-        return rows
-
-    except Exception:
-        logger.exception("GET /residents failed")
-
-        raise HTTPException(
-            status_code=500,
-            detail="Could not load residents"
-        )
+            """)
+            return cursor.fetchall()
 
 
-@app.post("/residents", status_code=201)
+@app.post("/residents")
 def create_resident(data: ResidentCreate):
     try:
-        with db_connection() as conn:
-
-            flat = conn.execute("""
-                SELECT flat_number, building
-                FROM flats
-                WHERE id = %s
-            """, (data.flat_id,)).fetchone()
-
-            if not flat:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Flat not found"
+        with db_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT id FROM flats WHERE id = %s",
+                    (data.flat_id,),
                 )
+                if not cursor.fetchone():
+                    raise HTTPException(status_code=404, detail="Flat not found")
 
-            row = conn.execute("""
-                INSERT INTO residents (full_name, flat_id, phone)
-                VALUES (%s, %s, %s)
-                RETURNING id, full_name, flat_id, phone, created_at
-            """, (
-                data.full_name.strip(),
-                data.flat_id,
-                data.phone.strip() or None
-            )).fetchone()
-
-            row["flat_number"] = flat["flat_number"]
-            row["building"] = flat["building"]
-
-        return row
-
+                cursor.execute("""
+                    INSERT INTO residents (full_name, flat_id, phone)
+                    VALUES (%s, %s, %s)
+                    RETURNING id, full_name, flat_id, phone, created_at
+                """, (data.full_name.strip(), data.flat_id, data.phone))
+                resident = cursor.fetchone()
+            connection.commit()
+            return resident
     except HTTPException:
         raise
-
     except Exception:
-        logger.exception("POST /residents failed")
+        logger.exception("Could not create resident")
+        raise HTTPException(status_code=500, detail="Could not create resident")
 
-        raise HTTPException(
-            status_code=500,
-            detail="Could not create resident"
-        )
-
-
-# -------------------------
-# VISITORS
-# -------------------------
 
 @app.get("/visitors")
 def get_visitors():
-    try:
-        with db_connection() as conn:
-            rows = conn.execute("""
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
                 SELECT
-                    v.id,
-                    v.full_name,
-                    v.flat_id,
-                    f.flat_number,
-                    f.building,
-                    v.phone,
-                    v.purpose,
-                    v.status,
-                    v.created_at,
-                    v.exited_at
+                    v.id, v.full_name, v.flat_id, f.flat_number,
+                    f.building, v.phone, v.purpose, v.status,
+                    v.created_at, v.exited_at
                 FROM visitors v
                 JOIN flats f ON f.id = v.flat_id
-                ORDER BY v.created_at DESC, v.id DESC
-            """).fetchall()
-
-        return rows
-
-    except Exception:
-        logger.exception("GET /visitors failed")
-
-        raise HTTPException(
-            status_code=500,
-            detail="Could not load visitors"
-        )
+                ORDER BY v.created_at DESC
+            """)
+            return cursor.fetchall()
 
 
-@app.post("/visitors", status_code=201)
+@app.post("/visitors")
 def create_visitor(data: VisitorCreate):
-    try:
-        with db_connection() as conn:
-
-            flat = conn.execute("""
-                SELECT id, flat_number, building
-                FROM flats
-                WHERE id = %s
-            """, (data.flat_id,)).fetchone()
-
-            if not flat:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Flat not found"
-                )
-
-            row = conn.execute("""
-                INSERT INTO visitors (
-                    full_name,
-                    flat_id,
-                    phone,
-                    purpose,
-                    status
-                )
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO visitors
+                    (full_name, flat_id, phone, purpose, status)
                 VALUES (%s, %s, %s, %s, 'Inside')
-                RETURNING
-                    id,
-                    full_name,
-                    flat_id,
-                    phone,
-                    purpose,
-                    status,
-                    created_at,
-                    exited_at
+                RETURNING *
             """, (
                 data.full_name.strip(),
                 data.flat_id,
-                data.phone.strip(),
-                data.purpose.strip()
-            )).fetchone()
-
-            row["flat_number"] = flat["flat_number"]
-            row["building"] = flat["building"]
-
-        return row
-
-    except HTTPException:
-        raise
-
-    except Exception:
-        logger.exception("POST /visitors failed")
-
-        raise HTTPException(
-            status_code=500,
-            detail="Could not register visitor"
-        )
+                data.phone,
+                data.purpose,
+            ))
+            visitor = cursor.fetchone()
+        connection.commit()
+        return visitor
 
 
 @app.patch("/visitors/{visitor_id}/checkout")
 def checkout_visitor(visitor_id: int):
-    try:
-        with db_connection() as conn:
-
-            row = conn.execute("""
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
                 UPDATE visitors
-                SET status = 'Checked Out',
-                    exited_at = NOW()
+                SET status = 'Exited', exited_at = CURRENT_TIMESTAMP
                 WHERE id = %s AND status = 'Inside'
-                RETURNING id, full_name, status, exited_at
-            """, (visitor_id,)).fetchone()
+                RETURNING *
+            """, (visitor_id,))
+            visitor = cursor.fetchone()
+        connection.commit()
 
-            if row:
-                return row
-
-            exists = conn.execute("""
-                SELECT id, status
-                FROM visitors
-                WHERE id = %s
-            """, (visitor_id,)).fetchone()
-
-            if not exists:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Visitor not found"
-                )
-
-            raise HTTPException(
-                status_code=409,
-                detail="Visitor has already checked out"
-            )
-
-    except HTTPException:
-        raise
-
-    except Exception:
-        logger.exception("PATCH visitor checkout failed")
-
+    if not visitor:
         raise HTTPException(
-            status_code=500,
-            detail="Could not check out visitor"
+            status_code=404,
+            detail="Visitor not found or already checked out",
         )
+    return visitor
 
-
-# -------------------------
-# SECONDARY PEOPLE
-# -------------------------
 
 @app.get("/secondary-people")
 def get_secondary_people():
-    try:
-        with db_connection() as conn:
-            rows = conn.execute("""
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
                 SELECT
-                    s.id,
-                    s.full_name,
-                    s.phone,
-                    s.category,
-                    s.resident_id,
-                    s.flat_id,
-                    s.active,
-                    s.created_at,
+                    s.id, s.full_name, s.phone, s.category,
+                    s.resident_id, s.flat_id, s.active, s.created_at,
                     r.full_name AS primary_resident,
-                    f.flat_number
+                    f.flat_number, f.building
                 FROM secondary_people s
-                JOIN residents r ON r.id = s.resident_id
+                LEFT JOIN residents r ON r.id = s.resident_id
                 JOIN flats f ON f.id = s.flat_id
                 ORDER BY s.created_at DESC
-            """).fetchall()
-
-        return rows
-
-    except Exception:
-        logger.exception("GET /secondary-people failed")
-
-        raise HTTPException(
-            status_code=500,
-            detail="Could not load secondary people"
-        )
+            """)
+            return cursor.fetchall()
 
 
-@app.post("/secondary-people", status_code=201)
+@app.post("/secondary-people")
 def create_secondary_person(data: SecondaryPersonCreate):
     token = secrets.token_urlsafe(32)
-    token_hash = hash_qr_token(token)
 
-    try:
-        with db_connection() as conn:
-
-            resident = conn.execute("""
-                SELECT id, flat_id
-                FROM residents
-                WHERE id = %s
-            """, (data.resident_id,)).fetchone()
-
-            if not resident:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Primary resident not found"
-                )
-
-            if resident["flat_id"] != data.flat_id:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Resident does not belong to this flat"
-                )
-
-            row = conn.execute("""
-                INSERT INTO secondary_people (
-                    full_name,
-                    phone,
-                    category,
-                    resident_id,
-                    flat_id,
-                    qr_token_hash
-                )
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO secondary_people
+                    (full_name, phone, category, resident_id,
+                     flat_id, qr_token_hash)
                 VALUES (%s, %s, %s, %s, %s, %s)
-                RETURNING
-                    id,
-                    full_name,
-                    phone,
-                    category,
-                    resident_id,
-                    flat_id,
-                    active,
-                    created_at
+                RETURNING id, full_name, phone, category,
+                          resident_id, flat_id, active, created_at
             """, (
                 data.full_name.strip(),
-                data.phone.strip(),
-                data.category.strip(),
+                data.phone,
+                data.category,
                 data.resident_id,
                 data.flat_id,
-                token_hash
-            )).fetchone()
+                hash_qr_token(token),
+            ))
+            person = cursor.fetchone()
+        connection.commit()
 
-        return {
-            **row,
-            "qr_token": token
-        }
-
-    except HTTPException:
-        raise
-
-    except Exception:
-        logger.exception("POST /secondary-people failed")
-
-        raise HTTPException(
-            status_code=500,
-            detail="Could not register secondary person"
-        )
+    return {**person, "qr_token": token}
 
 
 @app.patch("/secondary-people/{person_id}/deactivate")
 def deactivate_secondary_person(person_id: int):
-    try:
-        with db_connection() as conn:
-            row = conn.execute("""
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
                 UPDATE secondary_people
                 SET active = FALSE
                 WHERE id = %s
                 RETURNING id, full_name, active
-            """, (person_id,)).fetchone()
+            """, (person_id,))
+            person = cursor.fetchone()
+        connection.commit()
 
-        if not row:
-            raise HTTPException(
-                status_code=404,
-                detail="Secondary person not found"
-            )
+    if not person:
+        raise HTTPException(status_code=404, detail="Person not found")
+    return person
 
-        return row
-
-    except HTTPException:
-        raise
-
-    except Exception:
-        logger.exception("Deactivation failed")
-
-        raise HTTPException(
-            status_code=500,
-            detail="Could not deactivate person"
-        )
-
-
-# -------------------------
-# QR VALIDATION
-# -------------------------
 
 @app.post("/qr/validate")
-def validate_qr(data: dict):
-    token = data.get("token", "")
+def validate_qr(data: QRValidateRequest):
+    token_hash = hash_qr_token(data.token)
 
-    if not isinstance(token, str) or not token:
-        raise HTTPException(
-            status_code=400,
-            detail="QR token required"
-        )
-
-    token_hash = hash_qr_token(token)
-
-    try:
-        with db_connection() as conn:
-
-            # First check whether this is a flat QR.
-            flat = conn.execute("""
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
                 SELECT id, flat_number, building
                 FROM flats
                 WHERE qr_token_hash = %s
-            """, (token_hash,)).fetchone()
+            """, (token_hash,))
+            flat = cursor.fetchone()
 
             if flat:
+                cursor.execute("""
+                    SELECT id, full_name, phone, flat_id
+                    FROM residents
+                    WHERE flat_id = %s
+                    ORDER BY full_name
+                """, (flat["id"],))
+                residents = cursor.fetchall()
+
                 return {
                     "valid": True,
                     "type": "flat",
-                    "flat": flat
+                    "flat": flat,
+                    "residents": residents,
                 }
 
-            # Otherwise check secondary-person QR.
-            person = conn.execute("""
+            cursor.execute("""
                 SELECT
-                    s.id,
-                    s.full_name,
-                    s.category,
-                    s.active,
+                    s.id, s.full_name, s.phone, s.category,
+                    s.resident_id, s.flat_id, s.active,
                     r.full_name AS primary_resident,
-                    f.flat_number
+                    f.flat_number, f.building
                 FROM secondary_people s
-                JOIN residents r ON r.id = s.resident_id
+                LEFT JOIN residents r ON r.id = s.resident_id
                 JOIN flats f ON f.id = s.flat_id
                 WHERE s.qr_token_hash = %s
-            """, (token_hash,)).fetchone()
+            """, (token_hash,))
+            person = cursor.fetchone()
 
-        if not person or not person["active"]:
-            raise HTTPException(
-                status_code=404,
-                detail="Invalid or inactive QR pass"
-            )
+    if not person or not person["active"]:
+        raise HTTPException(status_code=404, detail="Invalid or inactive QR code")
 
-        return {
-            "valid": True,
-            "type": "secondary",
-            "person": person
+    return {
+        "valid": True,
+        "type": "secondary",
+        "person": person,
+    }
+
+
+@app.get("/resident-movements")
+def get_resident_movements():
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    m.id, m.resident_id, m.flat_id, m.action, m.created_at,
+                    r.full_name, r.phone,
+                    f.flat_number, f.building
+                FROM resident_movements m
+                JOIN residents r ON r.id = m.resident_id
+                JOIN flats f ON f.id = m.flat_id
+                ORDER BY m.created_at DESC
+            """)
+            return cursor.fetchall()
+
+
+@app.get("/resident-movements/current")
+def get_current_resident_status():
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT DISTINCT ON (r.id)
+                    r.id AS resident_id,
+                    r.full_name,
+                    r.flat_id,
+                    f.flat_number,
+                    f.building,
+                    m.action,
+                    m.created_at
+                FROM residents r
+                JOIN flats f ON f.id = r.flat_id
+                LEFT JOIN resident_movements m ON m.id = (
+                    SELECT m2.id
+                    FROM resident_movements m2
+                    WHERE m2.resident_id = r.id
+                    ORDER BY m2.created_at DESC, m2.id DESC
+                    LIMIT 1
+                )
+                ORDER BY r.id
+            """)
+            rows = cursor.fetchall()
+
+    return [
+        {
+            **row,
+            "status": (
+                "Inside" if row["action"] == "Check In"
+                else "Outside" if row["action"] == "Check Out"
+                else "Unknown"
+            ),
         }
+        for row in rows
+    ]
 
-    except HTTPException:
-        raise
 
-    except Exception:
-        logger.exception("QR validation failed")
+@app.post("/resident-movements")
+def record_resident_movement(data: ResidentMovementCreate):
+    with db_connection() as connection:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT id, flat_id, full_name
+                FROM residents
+                WHERE id = %s
+            """, (data.resident_id,))
+            resident = cursor.fetchone()
 
-        raise HTTPException(
-            status_code=500,
-            detail="Could not validate QR"
-        )
+            if not resident:
+                raise HTTPException(status_code=404, detail="Resident not found")
+
+            cursor.execute("""
+                SELECT action
+                FROM resident_movements
+                WHERE resident_id = %s
+                ORDER BY created_at DESC, id DESC
+                LIMIT 1
+            """, (data.resident_id,))
+            latest = cursor.fetchone()
+
+            currently_inside = bool(latest and latest["action"] == "Check In")
+
+            if data.action == "Check In" and currently_inside:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Resident is already checked in",
+                )
+
+            if data.action == "Check Out" and not currently_inside:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Resident is not currently checked in",
+                )
+
+            cursor.execute("""
+                INSERT INTO resident_movements (resident_id, flat_id, action)
+                VALUES (%s, %s, %s)
+                RETURNING id, resident_id, flat_id, action, created_at
+            """, (
+                data.resident_id,
+                resident["flat_id"],
+                data.action,
+            ))
+            movement = cursor.fetchone()
+
+        connection.commit()
+
+    return {
+        **movement,
+        "full_name": resident["full_name"],
+        "status": "Inside" if data.action == "Check In" else "Outside",
+    }

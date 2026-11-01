@@ -44,6 +44,8 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [mobileMenu, setMobileMenu] = useState(false);
   const [showVisitorForm, setShowVisitorForm] = useState(false);
+  const [visitorFlatId, setVisitorFlatId] = useState("");
+  const [visitorSubmitting, setVisitorSubmitting] = useState(false);
 
   const [flats, setFlats] = useState<Flat[]>([]);
   const [flatsLoading, setFlatsLoading] = useState(true);
@@ -163,33 +165,33 @@ export default function App() {
   async function handleRegisterVisitor(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    if (visitorSubmitting) return;
+
     const form = event.currentTarget;
     const data = new FormData(form);
-
     const fullName = String(data.get("visitorName") ?? "").trim();
     const phone = String(data.get("phone") ?? "").trim();
-    const destination = String(data.get("destination") ?? "").trim();
-    const purpose = String(data.get("purpose") ?? "");
+    const purpose = String(data.get("purpose") ?? "").trim();
+    const flatId = Number(visitorFlatId);
+
+    if (!fullName || !phone || !purpose || !Number.isInteger(flatId)) {
+      alert("Please complete all visitor details.");
+      return;
+    }
+
+    if (!flats.some((flat) => flat.id === flatId)) {
+      alert("Please select a valid registered flat.");
+      return;
+    }
+
+    setVisitorSubmitting(true);
 
     try {
-      const flatList = await getFlats();
-
-      const flat = flatList.find(
-        (item) =>
-          item.flat_number.toLowerCase() === destination.toLowerCase() ||
-          `${item.building ?? ""}-${item.flat_number}`.toLowerCase() ===
-            destination.toLowerCase()
-      );
-
-      if (!flat) {
-        alert("Flat not found. Enter a registered flat number.");
-        return;
-      }
-
-      await createVisitor(fullName, flat.id, phone, purpose);
+      await createVisitor(fullName, flatId, phone, purpose);
       await loadVisitors();
 
       form.reset();
+      setVisitorFlatId("");
       setShowVisitorForm(false);
       setActivePage("Visitors");
       alert("Visitor registered successfully!");
@@ -198,8 +200,10 @@ export default function App() {
       alert(
         error instanceof Error
           ? `Registration failed: ${error.message}`
-          : "Registration failed. Please try again."
+          : "Visitor registration failed. Please try again."
       );
+    } finally {
+      setVisitorSubmitting(false);
     }
   }
 
@@ -927,6 +931,7 @@ export default function App() {
                 type="button"
                 className="icon-button"
                 onClick={() => setShowVisitorForm(false)}
+                disabled={visitorSubmitting}
                 aria-label="Close form"
               >
                 <X size={20} />
@@ -957,12 +962,24 @@ export default function App() {
 
             <label>
               Destination flat
-              <input
+              <select
                 name="destination"
+                value={visitorFlatId}
+                onChange={(event) => setVisitorFlatId(event.target.value)}
                 required
-                maxLength={60}
-                placeholder="e.g. A-204"
-              />
+                disabled={flatsLoading || flats.length === 0 || visitorSubmitting}
+              >
+                <option value="">
+                  {flatsLoading ? "Loading flats..." : "Select destination flat"}
+                </option>
+                {flats.map((flat) => (
+                  <option key={flat.id} value={flat.id}>
+                    {flat.building
+                      ? `${flat.building} - ${flat.flat_number}`
+                      : flat.flat_number}
+                  </option>
+                ))}
+              </select>
             </label>
 
             <label>
@@ -988,11 +1005,16 @@ export default function App() {
                 type="button"
                 className="secondary-button"
                 onClick={() => setShowVisitorForm(false)}
+                disabled={visitorSubmitting}
               >
                 Cancel
               </button>
-              <button type="submit" className="primary-button">
-                Register Visitor
+              <button
+                type="submit"
+                className="primary-button"
+                disabled={visitorSubmitting || flatsLoading || flats.length === 0}
+              >
+                {visitorSubmitting ? "Registering..." : "Register Visitor"}
               </button>
             </div>
           </form>

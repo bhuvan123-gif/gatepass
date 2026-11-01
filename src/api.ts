@@ -1,3 +1,4 @@
+
 export const API_BASE_URL = "https://gatepass-api-eb51.onrender.com";
 
 async function apiRequest<T>(
@@ -14,16 +15,19 @@ async function apiRequest<T>(
 
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
+
     try {
       const error = await response.json();
       message = error.detail || message;
     } catch {
-      // Keep the fallback error message.
+      // Keep fallback error message.
     }
+
     throw new Error(message);
   }
 
   if (response.status === 204) return undefined as T;
+
   return response.json();
 }
 
@@ -41,6 +45,9 @@ function post<T>(endpoint: string, body: unknown) {
 function remove(endpoint: string) {
   return apiRequest<void>(endpoint, { method: "DELETE" });
 }
+
+
+// -------------------- TYPES --------------------
 
 export interface Flat {
   id: number;
@@ -127,6 +134,13 @@ export interface SecondaryPersonCreated extends SecondaryPerson {
   qr_token: string;
 }
 
+export interface SecondaryPersonQRCreated {
+  valid: boolean;
+  type: "secondary";
+  person: SecondaryPerson;
+  qr_token: string;
+}
+
 export interface QRValidationResult {
   valid: boolean;
   type: "flat" | "secondary";
@@ -166,46 +180,81 @@ export interface ProviderMovement extends MovementCreate {
   status?: "Inside" | "Outside" | "Unknown";
 }
 
-// Flats
+
+// -------------------- FLATS --------------------
+
 export const getFlats = () => get<Flat[]>("/flats");
-export const createFlat = (data: FlatCreate) => post<Flat>("/flats", data);
-export const deleteFlat = (id: number) => remove(`/flats/${id}`);
+
+export const createFlat = (data: FlatCreate) =>
+  post<Flat>("/flats", data);
+
+export const deleteFlat = (id: number) =>
+  remove(`/flats/${id}`);
+
 export const generateFlatQR = (id: number) =>
   post<FlatQRCreated>(`/flats/${id}/qr`, {});
 
-// Residents
-export const getResidents = () => get<Resident[]>("/residents");
+
+// -------------------- RESIDENTS --------------------
+
+export const getResidents = () =>
+  get<Resident[]>("/residents");
+
 export const createResident = (data: ResidentCreate) =>
   post<Resident>("/residents", data);
+
 export const deleteResident = (id: number) =>
   remove(`/residents/${id}`);
 
-// Visitors
-export const getVisitors = () => get<Visitor[]>("/visitors");
+
+// -------------------- VISITORS --------------------
+
+export const getVisitors = () =>
+  get<Visitor[]>("/visitors");
+
 export const createVisitor = (data: VisitorCreate) =>
   post<Visitor>("/visitors", data);
-export const checkoutVisitor = (id: number) =>
-  apiRequest<Visitor>(`/visitors/${id}/checkout`, { method: "PATCH" });
-export const deleteVisitor = (id: number) => remove(`/visitors/${id}`);
 
-// Service providers
+export const checkoutVisitor = (id: number) =>
+  apiRequest<Visitor>(`/visitors/${id}/checkout`, {
+    method: "PATCH",
+  });
+
+export const deleteVisitor = (id: number) =>
+  remove(`/visitors/${id}`);
+
+
+// -------------------- SERVICE PROVIDERS --------------------
+
 export const getSecondaryPeople = () =>
   get<SecondaryPerson[]>("/secondary-people");
+
 export const createSecondaryPerson = (data: SecondaryPersonCreate) =>
   post<SecondaryPersonCreated>("/secondary-people", data);
+
+export const generateSecondaryPersonQR = (id: number) =>
+  post<SecondaryPersonQRCreated>(`/secondary-people/${id}/qr`, {});
+
 export const deleteSecondaryPerson = (id: number) =>
   remove(`/secondary-people/${id}`);
 
-// QR
+
+// -------------------- QR --------------------
+
 export const validateQR = (token: string) =>
   post<QRValidationResult>("/qr/validate", { token });
+
 export const validateSecondaryQR = validateQR;
 
-// Resident movements
+
+// -------------------- RESIDENT MOVEMENTS --------------------
+
 export const getResidentMovements = () =>
   get<ResidentMovement[]>("/resident-movements");
+
 export const getCurrentResidentStatus = () =>
   get<ResidentMovement[]>("/resident-movements/current");
+
 export const recordResidentMovement = (
   residentId: number,
   data: MovementCreate
@@ -215,11 +264,15 @@ export const recordResidentMovement = (
     ...data,
   });
 
-// Service-provider movements
+
+// -------------------- SERVICE PROVIDER MOVEMENTS --------------------
+
 export const getProviderMovements = () =>
   get<ProviderMovement[]>("/secondary-person-movements");
+
 export const getCurrentProviderStatus = () =>
   get<ProviderMovement[]>("/secondary-person-movements/current");
+
 export const recordProviderMovement = (
   personId: number,
   data: MovementCreate
@@ -229,6 +282,8 @@ export const recordProviderMovement = (
     ...data,
   });
 
-// Visitor logs
+
+// -------------------- VISITOR LOGS --------------------
+
 export const getVisitorAccessLogs = () =>
   get<Visitor[]>("/visitor-access-logs");

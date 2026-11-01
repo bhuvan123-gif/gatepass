@@ -14,7 +14,7 @@ import {
 import {
   LayoutDashboard, Users, UserRoundCog, ClipboardList,
   ShieldCheck, Settings, Search, Plus, Trash2, Menu, X,
-  Clock, Car, QrCode, ArrowDownRight, ArrowUpRight,
+  QrCode, ArrowDownRight, ArrowUpRight,
 } from "lucide-react";
 
 type Page =

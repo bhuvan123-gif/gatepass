@@ -1,3 +1,4 @@
+
 export const API_BASE_URL =
   "https://gatepass-api-eb51.onrender.com";
 
@@ -73,6 +74,7 @@ export function generateFlatQR(flatId: number) {
   return post<FlatQRCreated>(`/flats/${flatId}/qr`, {});
 }
 
+
 // ---------------- RESIDENTS ----------------
 
 export interface Resident {
@@ -83,6 +85,7 @@ export interface Resident {
   flat_number?: string;
   building?: string | null;
   created_at?: string;
+  is_active: boolean;
 }
 
 export interface ResidentCreate {
@@ -99,6 +102,27 @@ export function createResident(data: ResidentCreate) {
   return post<Resident>("/residents", data);
 }
 
+// Deactivate resident without deleting their records.
+export function deactivateResident(residentId: number) {
+  return apiRequest<Resident>(
+    `/residents/${residentId}/deactivate`,
+    {
+      method: "PATCH",
+    }
+  );
+}
+
+// Reactivate a previously deactivated resident.
+export function reactivateResident(residentId: number) {
+  return apiRequest<Resident>(
+    `/residents/${residentId}/reactivate`,
+    {
+      method: "PATCH",
+    }
+  );
+}
+
+
 // ---------------- VISITORS ----------------
 
 export interface Visitor {
@@ -112,6 +136,7 @@ export interface Visitor {
   status: string;
   created_at: string;
   exited_at?: string | null;
+  is_archived: boolean;
 }
 
 export interface VisitorCreate {
@@ -130,10 +155,34 @@ export function createVisitor(data: VisitorCreate) {
 }
 
 export function checkoutVisitor(visitorId: number) {
-  return apiRequest<Visitor>(`/visitors/${visitorId}/checkout`, {
-    method: "PATCH",
-  });
+  return apiRequest<Visitor>(
+    `/visitors/${visitorId}/checkout`,
+    {
+      method: "PATCH",
+    }
+  );
 }
+
+// Archive a visitor without deleting their history.
+export function archiveVisitor(visitorId: number) {
+  return apiRequest<Visitor>(
+    `/visitors/${visitorId}/archive`,
+    {
+      method: "PATCH",
+    }
+  );
+}
+
+// Restore an archived visitor.
+export function restoreVisitor(visitorId: number) {
+  return apiRequest<Visitor>(
+    `/visitors/${visitorId}/restore`,
+    {
+      method: "PATCH",
+    }
+  );
+}
+
 
 // ---------------- VISITOR ACCESS LOGS ----------------
 
@@ -148,11 +197,14 @@ export interface VisitorAccessLog {
   status: string;
   created_at: string;
   exited_at: string | null;
+  is_archived: boolean;
 }
 
 export function getVisitorAccessLogs() {
   return apiRequest<VisitorAccessLog[]>("/visitor-access-logs");
 }
+
+
 // ---------------- SERVICE PROVIDERS ----------------
 
 export interface SecondaryPerson {
@@ -192,9 +244,12 @@ export function createSecondaryPerson(data: SecondaryPersonCreate) {
 export function deactivateSecondaryPerson(personId: number) {
   return apiRequest<SecondaryPerson>(
     `/secondary-people/${personId}/deactivate`,
-    { method: "PATCH" }
+    {
+      method: "PATCH",
+    }
   );
 }
+
 
 // ---------------- QR VALIDATION ----------------
 
@@ -223,6 +278,7 @@ export function validateQR(token: string) {
 export function validateSecondaryQR(token: string) {
   return validateQR(token);
 }
+
 
 // ---------------- RESIDENT MOVEMENTS ----------------
 

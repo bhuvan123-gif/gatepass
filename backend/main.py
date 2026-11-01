@@ -1,4 +1,5 @@
-
+import secrets
+import hashlib
 import os
 import logging
 from contextlib import contextmanager
@@ -77,6 +78,19 @@ def init_database():
                 exited_at TIMESTAMPTZ
             )
         """)
+                conn.execute("""
+            CREATE TABLE IF NOT EXISTS secondary_people (
+                id SERIAL PRIMARY KEY,
+                full_name TEXT NOT NULL,
+                phone TEXT,
+                category TEXT NOT NULL,
+                resident_id INTEGER NOT NULL REFERENCES residents(id),
+                flat_id INTEGER NOT NULL REFERENCES flats(id),
+                qr_token_hash TEXT NOT NULL UNIQUE,
+                active BOOLEAN NOT NULL DEFAULT TRUE,
+                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            )
+        """)
         conn.commit()
 
 
@@ -101,6 +115,12 @@ class ResidentCreate(BaseModel):
     flat_id: int
     phone: str = Field(default="", max_length=30)
 
+class SecondaryPersonCreate(BaseModel):
+    full_name: str = Field(min_length=1, max_length=150)
+    phone: str = Field(default="", max_length=30)
+    category: str = Field(min_length=1, max_length=50)
+    resident_id: int
+    flat_id: int
 
 class VisitorCreate(BaseModel):
     full_name: str = Field(min_length=1, max_length=150)
@@ -310,3 +330,169 @@ def checkout_visitor(visitor_id: int):
     except Exception:
         logger.exception("PATCH visitor checkout failed")
         raise HTTPException(status_code=500, detail="Could not check out visitor")
+
+def hash_qr_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+@app.get("/secondary-people")
+def get_secondary_people():
+    try:
+        with db_connection() as conn:
+            rows = conn.execute("""
+                SELECT
+                    s.id,
+                    s.full_name,
+                    s.phone,
+                    s.category,
+                    s.resident_id,
+                    s.flat_id,
+                    s.active,
+                    s.created_at,
+                    r.full_name AS primary_resident,
+                    f.flat_number
+                FROM secondary_people s
+                JOIN residents r ON r.id = s.resident_id
+                JOIN flats f ON f.id = s.flat_id
+                ORDER BY s.created_at DESC
+            """).fetchall()
+        return rows
+    except Exception:
+        logger.exception("GET /secondary-people failed")
+        raise HTTPException(
+            status_code=500,
+            detail="Could not load secondary people"
+        )
+
+
+@app.post("/secondary-people", status_code=201)
+def create_secondary_person(data: SecondaryPersonCreate):
+    token = secrets.token_urlsafe(32)
+    token_hash = hash_qr_token(token)
+
+    try:
+        with db_connection() as conn:
+            resident = conn.execute("""
+                SELECT id, flat_id
+                FROM residents
+                WHERE id = %s
+            """, (data.resident_id,)).fetchone()
+
+            if not resident:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Primary resident not found"
+                )
+
+            if resident["flat_id"] != data.flat_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Resident does not belong to this flat"
+                )
+
+            row = conn.execute("""
+                INSERT INTO secondary_people (
+                    full_name, phone, category,
+                    resident_id, flat_id, qr_token_hash
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id, full_name, phone, category,
+                          resident_id, flat_id, active, created_at
+            """, (
+                data.full_name.strip(),
+                data.phone.strip(),
+                data.category.strip(),
+                data.resident_id,
+                data.flat_id,
+                token_hash
+            )).fetchone()
+
+        # The raw QR token is returned only at creation.
+        return {
+            **row,
+            "qr_token": token
+        }
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("POST /secondary-people failed")
+        raise HTTPException(
+            status_code=500,
+            detail="Could not register secondary person"
+        )
+
+
+@app.post("/qr/validate")
+def validate_qr(data: dict):
+    token = data.get("token", "")
+
+    if not isinstance(token, str) or not token:
+        raise HTTPException(status_code=400, detail="QR token required")
+
+    token_hash = hash_qr_token(token)
+
+    try:
+        with db_connection() as conn:
+            person = conn.execute("""
+                SELECT
+                    s.id,
+                    s.full_name,
+                    s.category,
+                    s.active,
+                    r.full_name AS primary_resident,
+                    f.flat_number
+                FROM secondary_people s
+                JOIN residents r ON r.id = s.resident_id
+                JOIN flats f ON f.id = s.flat_id
+                WHERE s.qr_token_hash = %s
+            """, (token_hash,)).fetchone()
+
+        if not person or not person["active"]:
+            raise HTTPException(
+                status_code=404,
+                detail="Invalid or inactive QR pass"
+            )
+
+        return {
+            "valid": True,
+            "person": person
+        }
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("QR validation failed")
+        raise HTTPException(
+            status_code=500,
+            detail="Could not validate QR"
+        )
+
+
+@app.patch("/secondary-people/{person_id}/deactivate")
+def deactivate_secondary_person(person_id: int):
+    try:
+        with db_connection() as conn:
+            row = conn.execute("""
+                UPDATE secondary_people
+                SET active = FALSE
+                WHERE id = %s
+                RETURNING id, full_name, active
+            """, (person_id,)).fetchone()
+
+        if not row:
+            raise HTTPException(
+                status_code=404,
+                detail="Secondary person not found"
+            )
+
+        return row
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Deactivation failed")
+        raise HTTPException(
+            status_code=500,
+            detail="Could not deactivate person"
+        )

@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useState } from "react";
 import {
   getVisitorAccessLogs,
@@ -87,6 +86,9 @@ export default function App() {
   const [building, setBuilding] = useState("");
   const [flatMessage, setFlatMessage] = useState("");
 
+  // Used for generating a flat QR without displaying the flat list.
+  const [flatQRSelection, setFlatQRSelection] = useState("");
+
   const [residents, setResidents] = useState<Resident[]>([]);
   const [residentsLoading, setResidentsLoading] = useState(true);
   const [residentsError, setResidentsError] = useState("");
@@ -134,6 +136,10 @@ export default function App() {
   const [qrScanResult, setQrScanResult] = useState<QRValidationResult | null>(null);
   const [qrScanMessage, setQrScanMessage] = useState("");
   const [qrScanBusy, setQrScanBusy] = useState(false);
+
+  // Manual QR entry
+  const [manualQRToken, setManualQRToken] = useState("");
+
   const [selectedMovementResident, setSelectedMovementResident] = useState("");
   const [movementSubmitting, setMovementSubmitting] = useState(false);
   const [residentActionId, setResidentActionId] = useState<number | null>(null);
@@ -259,10 +265,71 @@ export default function App() {
     void refreshAll();
   }, [refreshAll]);
 
+  // ---------------- SHARED QR VERIFICATION ----------------
+
+  const verifyQRCode = useCallback(async (token: string) => {
+    const cleanToken = token.trim();
+
+    if (!cleanToken) {
+      setQrScanMessage("Please enter a QR token.");
+      return;
+    }
+
+    if (qrScanBusy) return;
+
+    setQrScanBusy(true);
+    setQrScanMessage("Verifying QR code...");
+    setQrScanResult(null);
+    setSelectedMovementResident("");
+
+    try {
+      const result = await validateQR(cleanToken);
+
+      setQrScanResult(result);
+
+      if (result.type === "flat") {
+        setQrScanMessage(
+          `Flat ${result.flat.flat_number} verified. Select the resident.`
+        );
+      } else {
+        setQrScanMessage(
+          `Service provider verified: ${result.person.full_name}`
+        );
+      }
+    } catch (error) {
+      setQrScanMessage(
+        error instanceof Error
+          ? error.message
+          : "QR verification failed. Check the QR code and try again."
+      );
+    } finally {
+      setQrScanBusy(false);
+    }
+  }, [qrScanBusy]);
+
+  // ---------------- MANUAL QR ENTRY ----------------
+
+  async function handleManualQRVerification(
+    event: React.FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    if (!manualQRToken.trim() || qrScanBusy) return;
+
+    const token = manualQRToken.trim();
+
+    await verifyQRCode(token);
+
+    // Clear the input only after successful verification.
+    // If verification fails, the user can edit the token and retry.
+    // The result is set by verifyQRCode().
+    setManualQRToken((current) => current);
+  }
+
   // ---------------- QR SCANNER ----------------
 
   useEffect(() => {
-    if (!showQRScanner) return;
+    if (!showQRScanner || qrScanResult) return;
 
     let scanner: Html5QrcodeScanner | null = null;
     let handled = false;
@@ -286,34 +353,13 @@ export default function App() {
           if (handled) return;
 
           handled = true;
-          setQrScanBusy(true);
-          setQrScanMessage("");
-          setQrScanResult(null);
-          setSelectedMovementResident("");
+
+          await verifyQRCode(decodedText);
 
           try {
-            const result = await validateQR(decodedText);
-
-            setQrScanResult(result);
-
-            if (result.type === "flat") {
-              setQrScanMessage(
-                `Flat ${result.flat.flat_number} verified. Select the resident.`
-              );
-            } else {
-              setQrScanMessage(
-                `Service provider verified: ${result.person.full_name}`
-              );
-            }
-
             await scanner?.clear();
           } catch (error) {
-            handled = false;
-            setQrScanMessage(
-              error instanceof Error ? error.message : "QR verification failed."
-            );
-          } finally {
-            setQrScanBusy(false);
+            console.warn("Could not stop QR scanner:", error);
           }
         },
         () => {
@@ -324,16 +370,27 @@ export default function App() {
 
     return () => {
       window.clearTimeout(timer);
+
       if (scanner) {
         void scanner.clear().catch(() => undefined);
       }
     };
-  }, [showQRScanner]);
+  }, [showQRScanner, qrScanResult, verifyQRCode]);
+
+  function openQRScanner() {
+    setQrScanResult(null);
+    setQrScanMessage("");
+    setManualQRToken("");
+    setSelectedMovementResident("");
+    setQrScanBusy(false);
+    setShowQRScanner(true);
+  }
 
   function closeQRScanner() {
     setShowQRScanner(false);
     setQrScanResult(null);
     setQrScanMessage("");
+    setManualQRToken("");
     setSelectedMovementResident("");
     setQrScanBusy(false);
     setMovementSubmitting(false);
@@ -649,9 +706,7 @@ export default function App() {
     } catch (error) {
       console.error("Service provider deactivation failed:", error);
       setSecondaryMessage(
-        error instanceof Error
-          ? error.message
-          : "Could not deactivate service provider."
+        error instanceof Error ? error.message : "Could not deactivate service provider."
       );
     }
   }
@@ -987,12 +1042,16 @@ export default function App() {
   // ---------------- FLATS PAGE ----------------
 
   function renderFlats() {
+    const selectedFlat = flats.find(
+      (flat) => flat.id === Number(flatQRSelection)
+    );
+
     return (
       <section className="panel" style={{ padding: 24 }}>
         <div className="panel-heading">
           <div>
-            <h3>Registered Flats</h3>
-            <p>Manage flats stored in the GatePass database</p>
+            <h3>Flat Registration</h3>
+            <p>Register flats for resident and visitor management</p>
           </div>
           <span className="live-tag">DATABASE</span>
         </div>
@@ -1025,44 +1084,57 @@ export default function App() {
         </form>
 
         {flatMessage && <p role="status">{flatMessage}</p>}
-        {flatsLoading && <p>Loading flats...</p>}
-        {flatsError && <p>{flatsError}</p>}
+        {flatsLoading && <p>Loading flat options...</p>}
+        {flatsError && <p role="alert">{flatsError}</p>}
 
-        {!flatsLoading && !flatsError && flats.length === 0 && (
-          <p>No flats registered yet.</p>
-        )}
+        {/* Flat records are deliberately not displayed here. */}
 
-        {!flatsLoading &&
-          !flatsError &&
-          flats.map((flat) => (
-            <div
-              key={flat.id}
-              style={{
-                padding: "12px 0",
-                borderBottom: "1px solid #eee",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                gap: 12,
-                flexWrap: "wrap",
+        <div
+          style={{
+            marginTop: 24,
+            paddingTop: 20,
+            borderTop: "1px solid #eee",
+          }}
+        >
+          <h3>Generate Flat QR</h3>
+          <p>Select a flat to generate or replace its QR code.</p>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              flexWrap: "wrap",
+              marginTop: 12,
+            }}
+          >
+            <select
+              value={flatQRSelection}
+              onChange={(event) => setFlatQRSelection(event.target.value)}
+              disabled={flatsLoading || flats.length === 0}
+            >
+              <option value="">Select flat</option>
+              {flats.map((flat) => (
+                <option key={flat.id} value={flat.id}>
+                  {flatLabel(flat)}
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              disabled={
+                !selectedFlat || flatQRLoading !== null
+              }
+              onClick={() => {
+                if (selectedFlat) {
+                  void handleGenerateFlatQR(selectedFlat);
+                }
               }}
             >
-              <div>
-                <strong>{flat.flat_number}</strong>
-                {flat.building && <span> — {flat.building}</span>}
-              </div>
-
-              <button
-                type="button"
-                disabled={flatQRLoading === flat.id}
-                onClick={() => void handleGenerateFlatQR(flat)}
-              >
-                {flatQRLoading === flat.id
-                  ? "Generating..."
-                  : "Generate Flat QR"}
-              </button>
-            </div>
-          ))}
+              {flatQRLoading !== null ? "Generating..." : "Generate Flat QR"}
+            </button>
+          </div>
+        </div>
 
         {flatQRMessage && (
           <p role="status" style={{ marginTop: 12 }}>
@@ -1494,11 +1566,7 @@ export default function App() {
         >
           <button
             type="button"
-            onClick={() => {
-              setQrScanMessage("");
-              setQrScanResult(null);
-              setShowQRScanner(true);
-            }}
+            onClick={openQRScanner}
           >
             Scan Provider QR
           </button>
@@ -2047,7 +2115,7 @@ export default function App() {
               </div>
               <div>
                 <strong>Flat QR verification</strong>
-                <p>Scan a flat QR and select the resident to record movement.</p>
+                <p>Scan or manually enter a flat QR and select the resident.</p>
               </div>
             </div>
 
@@ -2064,17 +2132,14 @@ export default function App() {
             <button
               type="button"
               className="secondary-button"
-              onClick={() => {
-                setQrScanMessage("");
-                setQrScanResult(null);
-                setShowQRScanner(true);
-              }}
+              onClick={openQRScanner}
             >
               Open QR Scanner
             </button>
           </article>
         </section>
 
+        {/* Flat registration is available, but registered flat rows are hidden. */}
         <div style={{ marginTop: 24 }}>{renderFlats()}</div>
         <div style={{ marginTop: 24 }}>{renderResidents()}</div>
       </>
@@ -2279,7 +2344,7 @@ export default function App() {
                     .getElementById("provider-management")
                     ?.scrollIntoView({ behavior: "smooth" });
                 } else {
-                  setShowQRScanner(true);
+                  openQRScanner();
                 }
               }}
             >
@@ -2298,7 +2363,7 @@ export default function App() {
         </div>
       </main>
 
-      {/* QR SCANNER MODAL */}
+      {/* QR SCANNER AND MANUAL VERIFICATION MODAL */}
 
       {showQRScanner && (
         <div
@@ -2311,7 +2376,7 @@ export default function App() {
             <div className="modal-heading">
               <div>
                 <span className="eyebrow">GATE OPERATIONS</span>
-                <h3>Gate QR Scanner</h3>
+                <h3>Gate QR Verification</h3>
               </div>
 
               <button
@@ -2326,8 +2391,55 @@ export default function App() {
 
             {!qrScanResult && (
               <>
-                <p>Scan a flat QR or an active service-provider QR.</p>
+                <p>
+                  Scan a flat QR or an active service-provider QR using your
+                  camera.
+                </p>
+
                 <div id="gatepass-qr-reader" />
+
+                <div
+                  style={{
+                    marginTop: 24,
+                    paddingTop: 20,
+                    borderTop: "1px solid #e5e7eb",
+                  }}
+                >
+                  <h3>Enter QR Token Manually</h3>
+                  <p>
+                    If the camera is unavailable, enter or paste the token
+                    encoded in the QR code.
+                  </p>
+
+                  <form
+                    onSubmit={handleManualQRVerification}
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 12,
+                    }}
+                  >
+                    <input
+                      type="text"
+                      value={manualQRToken}
+                      onChange={(event) =>
+                        setManualQRToken(event.target.value)
+                      }
+                      placeholder="Enter or paste QR token"
+                      autoComplete="off"
+                      required
+                      disabled={qrScanBusy}
+                    />
+
+                    <button
+                      type="submit"
+                      className="primary-button"
+                      disabled={!manualQRToken.trim() || qrScanBusy}
+                    >
+                      {qrScanBusy ? "Verifying..." : "Verify QR Token"}
+                    </button>
+                  </form>
+                </div>
               </>
             )}
 
@@ -2338,7 +2450,7 @@ export default function App() {
                 role="status"
                 style={{
                   padding: 12,
-                  background: "#f0fdf4",
+                  background: qrScanResult ? "#f0fdf4" : "#f8fafc",
                   borderRadius: 8,
                 }}
               >
@@ -2479,9 +2591,10 @@ export default function App() {
                     setQrScanResult(null);
                     setSelectedMovementResident("");
                     setQrScanMessage("");
+                    setManualQRToken("");
                   }}
                 >
-                  Scan Another QR
+                  Scan or Enter Another QR
                 </button>
               )}
 

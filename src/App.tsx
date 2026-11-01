@@ -66,6 +66,16 @@ export default function App() {
   const [residentFlatId, setResidentFlatId] = useState("");
   const [residentPhone, setResidentPhone] = useState("");
   const [residentMessage, setResidentMessage] = useState("");
+  // SERVICE PROVIDERS
+const [secondaryPeople, setSecondaryPeople] = useState<SecondaryPerson[]>([]);
+const [secondaryLoading, setSecondaryLoading] = useState(true);
+const [secondaryError, setSecondaryError] = useState("");
+const [secondaryName, setSecondaryName] = useState("");
+const [secondaryPhone, setSecondaryPhone] = useState("");
+const [secondaryCategory, setSecondaryCategory] = useState("Maid");
+const [secondaryResidentId, setSecondaryResidentId] = useState("");
+const [secondaryMessage, setSecondaryMessage] = useState("");
+const [newProviderQR, setNewProviderQR] = useState("");
 
   const [visitors, setVisitors] = useState<Visitor[]>([]);
   const [visitorsLoading, setVisitorsLoading] = useState(true);
@@ -86,6 +96,22 @@ export default function App() {
       setVisitorsLoading(false);
     }
   }, []);
+  const loadSecondaryPeople = useCallback(async () => {
+  try {
+    const data = await getSecondaryPeople();
+    setSecondaryPeople(data);
+    setSecondaryError("");
+  } catch (error) {
+    console.error("Failed to load service providers:", error);
+    setSecondaryError(
+      error instanceof Error
+        ? error.message
+        : "Could not load service providers."
+    );
+  } finally {
+    setSecondaryLoading(false);
+  }
+}, []);
 
   useEffect(() => {
     getFlats()
@@ -115,7 +141,8 @@ export default function App() {
       .finally(() => setResidentsLoading(false));
 
     void loadVisitors();
-  }, [loadVisitors]);
+    void loadSecondaryPeople();
+ }, [loadVisitors, loadSecondaryPeople]);
 
   const today = new Date().toDateString();
 

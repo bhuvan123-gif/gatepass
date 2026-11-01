@@ -10,6 +10,10 @@ import {
   getVisitors,
   createVisitor,
   checkoutVisitor,
+  deactivateResident,
+  reactivateResident,
+  archiveVisitor,
+  restoreVisitor,
   getSecondaryPeople,
   createSecondaryPerson,
   deactivateSecondaryPerson,
@@ -90,6 +94,11 @@ export default function App() {
   const [residentFlatId, setResidentFlatId] = useState("");
   const [residentPhone, setResidentPhone] = useState("");
   const [residentMessage, setResidentMessage] = useState("");
+
+  const [residentView, setResidentView] = useState<"active" | "inactive">("active");
+  const [residentManagementActionId, setResidentManagementActionId] =
+    useState<number | null>(null);
+
   const [visitorAccessLogs, setVisitorAccessLogs] = useState<VisitorAccessLog[]>([]);
   const [visitorLogsLoading, setVisitorLogsLoading] = useState(false);
   const [visitorLogsError, setVisitorLogsError] = useState("");
@@ -109,6 +118,7 @@ export default function App() {
   const [visitorsLoading, setVisitorsLoading] = useState(true);
   const [visitorsError, setVisitorsError] = useState("");
   const [visitorActionId, setVisitorActionId] = useState<number | null>(null);
+  const [visitorView, setVisitorView] = useState<"active" | "archived">("active");
 
   const [flatQR, setFlatQR] = useState<FlatQRCreated | null>(null);
   const [flatQRLoading, setFlatQRLoading] = useState<number | null>(null);
@@ -129,24 +139,25 @@ export default function App() {
   const [residentActionId, setResidentActionId] = useState<number | null>(null);
 
   // ---------------- DATA LOADERS ----------------
-  const loadVisitorAccessLogs = useCallback(async () => {
-  setVisitorLogsLoading(true);
 
-  try {
-    const data = await getVisitorAccessLogs();
-    setVisitorAccessLogs(data);
-    setVisitorLogsError("");
-  } catch (error) {
-    console.error("Failed to load visitor access logs:", error);
-    setVisitorLogsError(
-      error instanceof Error
-        ? error.message
-        : "Could not load visitor access logs."
-    );
-  } finally {
-    setVisitorLogsLoading(false);
-  }
-}, []);
+  const loadVisitorAccessLogs = useCallback(async () => {
+    setVisitorLogsLoading(true);
+
+    try {
+      const data = await getVisitorAccessLogs();
+      setVisitorAccessLogs(data);
+      setVisitorLogsError("");
+    } catch (error) {
+      console.error("Failed to load visitor access logs:", error);
+      setVisitorLogsError(
+        error instanceof Error
+          ? error.message
+          : "Could not load visitor access logs."
+      );
+    } finally {
+      setVisitorLogsLoading(false);
+    }
+  }, []);
 
   const loadVisitors = useCallback(async () => {
     try {
@@ -227,22 +238,22 @@ export default function App() {
   }, []);
 
   const refreshAll = useCallback(async () => {
-  await Promise.all([
-    loadFlats(),
-    loadResidents(),
-    loadVisitors(),
-    loadSecondaryPeople(),
-    loadResidentMovements(),
-    loadVisitorAccessLogs(),
+    await Promise.all([
+      loadFlats(),
+      loadResidents(),
+      loadVisitors(),
+      loadSecondaryPeople(),
+      loadResidentMovements(),
+      loadVisitorAccessLogs(),
+    ]);
+  }, [
+    loadFlats,
+    loadResidents,
+    loadVisitors,
+    loadSecondaryPeople,
+    loadResidentMovements,
+    loadVisitorAccessLogs,
   ]);
-}, [
-  loadFlats,
-  loadResidents,
-  loadVisitors,
-  loadSecondaryPeople,
-  loadResidentMovements,
-  loadVisitorAccessLogs,
-]);
 
   useEffect(() => {
     void refreshAll();
@@ -410,6 +421,51 @@ export default function App() {
     }
   }
 
+  async function handleResidentStatusChange(resident: Resident) {
+    if (residentManagementActionId !== null) return;
+
+    const action = resident.is_active ? "deactivate" : "reactivate";
+
+    const confirmed = window.confirm(
+      `${action === "deactivate" ? "Deactivate" : "Reactivate"} ${resident.full_name}?\n\n` +
+        (action === "deactivate"
+          ? "Their historical movement records will be preserved. They will no longer be available for new movement entries."
+          : "They will become active again.")
+    );
+
+    if (!confirmed) return;
+
+    setResidentManagementActionId(resident.id);
+    setResidentsError("");
+
+    try {
+      if (action === "deactivate") {
+        await deactivateResident(resident.id);
+      } else {
+        await reactivateResident(resident.id);
+      }
+
+      await Promise.all([
+        loadResidents(),
+        loadResidentMovements(),
+      ]);
+
+      setResidentMessage(
+        `${resident.full_name} ${
+          action === "deactivate" ? "deactivated" : "reactivated"
+        } successfully.`
+      );
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : `Could not ${action} resident.`
+      );
+    } finally {
+      setResidentManagementActionId(null);
+    }
+  }
+
   // ---------------- VISITORS ----------------
 
   async function handleRegisterVisitor(event: React.FormEvent<HTMLFormElement>) {
@@ -451,6 +507,7 @@ export default function App() {
       setVisitorFlatId("");
       setShowVisitorForm(false);
       setActivePage("Visitors");
+      setVisitorView("active");
 
       alert("Visitor registered successfully!");
     } catch (error) {
@@ -474,10 +531,51 @@ export default function App() {
 
     try {
       await checkoutVisitor(visitor.id);
-      await loadVisitors();
+      await Promise.all([
+        loadVisitors(),
+        loadVisitorAccessLogs(),
+      ]);
     } catch (error) {
       alert(
         error instanceof Error ? error.message : "Could not check out visitor."
+      );
+    } finally {
+      setVisitorActionId(null);
+    }
+  }
+
+  async function handleVisitorArchiveChange(visitor: Visitor) {
+    if (visitorActionId !== null) return;
+
+    const action = visitor.is_archived ? "restore" : "archive";
+
+    const confirmed = window.confirm(
+      `${action === "archive" ? "Archive" : "Restore"} ${visitor.full_name}?\n\n` +
+        (action === "archive"
+          ? "The visitor record will be hidden from active visitor records. Access logs will be preserved."
+          : "The visitor record will return to the active visitor list.")
+    );
+
+    if (!confirmed) return;
+
+    setVisitorActionId(visitor.id);
+
+    try {
+      if (action === "archive") {
+        await archiveVisitor(visitor.id);
+      } else {
+        await restoreVisitor(visitor.id);
+      }
+
+      await Promise.all([
+        loadVisitors(),
+        loadVisitorAccessLogs(),
+      ]);
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : `Could not ${action} visitor.`
       );
     } finally {
       setVisitorActionId(null);
@@ -504,6 +602,11 @@ export default function App() {
 
     if (secondaryResidentId && (!resident || resident.flat_id !== flatId)) {
       setSecondaryMessage("Select a resident belonging to the selected flat.");
+      return;
+    }
+
+    if (resident && !resident.is_active) {
+      setSecondaryMessage("Select an active resident.");
       return;
     }
 
@@ -586,37 +689,36 @@ export default function App() {
       setMovementSubmitting(false);
     }
   }
+
   async function handleResidentMovementDirect(
-  resident: Resident,
-  action: MovementAction
-) {
-  if (residentActionId !== null) return;
+    resident: Resident,
+    action: MovementAction
+  ) {
+    if (residentActionId !== null) return;
 
-  const confirmed = window.confirm(
-    `${action} ${resident.full_name}?`
-  );
-
-  if (!confirmed) return;
-
-  setResidentActionId(resident.id);
-  setMovementError("");
-
-  try {
-    await recordResidentMovement(resident.id, action);
-
-    await loadResidentMovements();
-
-    alert(`${resident.full_name}: ${action} recorded successfully.`);
-  } catch (error) {
-    alert(
-      error instanceof Error
-        ? error.message
-        : "Could not record resident movement."
+    const confirmed = window.confirm(
+      `${action} ${resident.full_name}?`
     );
-  } finally {
-    setResidentActionId(null);
+
+    if (!confirmed) return;
+
+    setResidentActionId(resident.id);
+    setMovementError("");
+
+    try {
+      await recordResidentMovement(resident.id, action);
+      await loadResidentMovements();
+      alert(`${resident.full_name}: ${action} recorded successfully.`);
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "Could not record resident movement."
+      );
+    } finally {
+      setResidentActionId(null);
+    }
   }
-}
 
   // ---------------- QR DOWNLOAD ----------------
 
@@ -651,17 +753,19 @@ export default function App() {
 
   const today = new Date().toDateString();
 
+  const activeVisitors = visitors.filter((v) => !v.is_archived);
+
   const stats = [
     {
       label: "Total Visitors",
-      value: String(visitors.length),
+      value: String(activeVisitors.length),
       icon: Users,
       color: "blue",
-      change: "All registered visitors",
+      change: "Active visitor records",
     },
     {
       label: "Currently Inside",
-      value: String(visitors.filter((v) => v.status === "Inside").length),
+      value: String(activeVisitors.filter((v) => v.status === "Inside").length),
       icon: ShieldCheck,
       color: "green",
       change: "Visitors currently on premises",
@@ -669,7 +773,7 @@ export default function App() {
     {
       label: "Today's Visitors",
       value: String(
-        visitors.filter(
+        activeVisitors.filter(
           (v) => new Date(v.created_at).toDateString() === today
         ).length
       ),
@@ -686,8 +790,13 @@ export default function App() {
     },
   ];
 
-  const filteredVisitors = visitors.filter((visitor) =>
-    [
+  const filteredVisitors = visitors.filter((visitor) => {
+    const matchesView =
+      visitorView === "active"
+        ? !visitor.is_archived
+        : visitor.is_archived;
+
+    const matchesSearch = [
       visitor.full_name,
       visitor.flat_number ?? "",
       visitor.building ?? "",
@@ -696,8 +805,10 @@ export default function App() {
     ]
       .join(" ")
       .toLowerCase()
-      .includes(search.toLowerCase())
-  );
+      .includes(search.toLowerCase());
+
+    return matchesView && matchesSearch;
+  });
 
   // ---------------- VISITOR TABLE ----------------
 
@@ -706,10 +817,30 @@ export default function App() {
       <article className="panel visitor-panel">
         <div className="panel-heading">
           <div>
-            <h3>{activePage === "Dashboard" ? "Recent Visitors" : "Visitor Records"}</h3>
+            <h3>
+              {activePage === "Dashboard" ? "Recent Visitors" : "Visitor Records"}
+            </h3>
             <p>Visitor activity retrieved from the GatePass database</p>
           </div>
           <span className="live-tag">DATABASE</span>
+        </div>
+
+        <div style={{ display: "flex", gap: 10, margin: "20px 0", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => setVisitorView("active")}
+            disabled={visitorView === "active"}
+          >
+            Active Visitors ({visitors.filter((v) => !v.is_archived).length})
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setVisitorView("archived")}
+            disabled={visitorView === "archived"}
+          >
+            Archived Visitors ({visitors.filter((v) => v.is_archived).length})
+          </button>
         </div>
 
         <div className="table-toolbar">
@@ -795,26 +926,40 @@ export default function App() {
                     <td>
                       <span
                         className={`badge ${
-                          visitor.status === "Inside"
-                            ? "badge-green"
-                            : "badge-gray"
+                          visitor.is_archived
+                            ? "badge-gray"
+                            : visitor.status === "Inside"
+                              ? "badge-green"
+                              : "badge-gray"
                         }`}
                       >
                         <span className="badge-dot" />
-                        {visitor.status}
+                        {visitor.is_archived ? "Archived" : visitor.status}
                       </span>
 
-                      {visitor.status === "Inside" && (
+                      {!visitor.is_archived && visitor.status === "Inside" && (
                         <button
                           type="button"
                           disabled={visitorActionId !== null}
                           onClick={() => void handleCheckout(visitor)}
                         >
                           {visitorActionId === visitor.id
-                            ? "Checking out..."
+                            ? "Processing..."
                             : "Check Out"}
                         </button>
                       )}
+
+                      <button
+                        type="button"
+                        disabled={visitorActionId !== null}
+                        onClick={() => void handleVisitorArchiveChange(visitor)}
+                      >
+                        {visitorActionId === visitor.id
+                          ? "Updating..."
+                          : visitor.is_archived
+                            ? "Restore"
+                            : "Archive"}
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -824,7 +969,7 @@ export default function App() {
                 filteredVisitors.length === 0 && (
                   <tr>
                     <td colSpan={5} className="empty-state">
-                      No matching visitors found.
+                      No {visitorView} visitors found.
                     </td>
                   </tr>
                 )}
@@ -833,7 +978,7 @@ export default function App() {
         </div>
 
         <div className="panel-footer">
-          {visitors.length} visitor records · Live database
+          {filteredVisitors.length} {visitorView} visitor records · Live database
         </div>
       </article>
     );
@@ -982,173 +1127,227 @@ export default function App() {
 
   // ---------------- RESIDENTS PAGE ----------------
 
- 
-function renderResidents() {
-  return (
-    <>
-      {renderFlats()}
+  function renderResidents() {
+    const displayedResidents = residents.filter((resident) =>
+      residentView === "active" ? resident.is_active : !resident.is_active
+    );
 
-      <section
-        className="panel"
-        id="resident-management"
-        style={{ padding: 24, marginTop: 24 }}
-      >
-        <div className="panel-heading">
-          <div>
-            <h3>Resident Management</h3>
-            <p>Register residents and manage their entry and exit</p>
-          </div>
-          <span className="live-tag">DATABASE</span>
-        </div>
+    return (
+      <>
+        {renderFlats()}
 
-        <form
-          onSubmit={handleCreateResident}
-          style={{
-            display: "flex",
-            gap: 12,
-            flexWrap: "wrap",
-            marginBottom: 20,
-          }}
+        <section
+          className="panel"
+          id="resident-management"
+          style={{ padding: 24, marginTop: 24 }}
         >
-          <input
-            value={residentName}
-            onChange={(event) => setResidentName(event.target.value)}
-            placeholder="Resident full name"
-            required
-            maxLength={100}
-          />
+          <div className="panel-heading">
+            <div>
+              <h3>Resident Management</h3>
+              <p>Register residents and manage their entry and exit</p>
+            </div>
+            <span className="live-tag">DATABASE</span>
+          </div>
 
-          <select
-            value={residentFlatId}
-            onChange={(event) => setResidentFlatId(event.target.value)}
-            required
+          <form
+            onSubmit={handleCreateResident}
+            style={{
+              display: "flex",
+              gap: 12,
+              flexWrap: "wrap",
+              marginBottom: 20,
+            }}
           >
-            <option value="">Select flat</option>
-            {flats.map((flat) => (
-              <option key={flat.id} value={flat.id}>
-                {flatLabel(flat)}
-              </option>
-            ))}
-          </select>
+            <input
+              value={residentName}
+              onChange={(event) => setResidentName(event.target.value)}
+              placeholder="Resident full name"
+              required
+              maxLength={100}
+            />
 
-          <input
-            value={residentPhone}
-            onChange={(event) => setResidentPhone(event.target.value)}
-            placeholder="Phone number"
-            required
-            maxLength={20}
-          />
+            <select
+              value={residentFlatId}
+              onChange={(event) => setResidentFlatId(event.target.value)}
+              required
+            >
+              <option value="">Select flat</option>
+              {flats.map((flat) => (
+                <option key={flat.id} value={flat.id}>
+                  {flatLabel(flat)}
+                </option>
+              ))}
+            </select>
 
-          <button type="submit" disabled={flats.length === 0}>
-            Register Resident
-          </button>
-        </form>
+            <input
+              value={residentPhone}
+              onChange={(event) => setResidentPhone(event.target.value)}
+              placeholder="Phone number"
+              required
+              maxLength={20}
+            />
 
-        {flats.length === 0 && !flatsLoading && (
-          <p>Register a flat first before adding residents.</p>
-        )}
+            <button type="submit" disabled={flats.length === 0}>
+              Register Resident
+            </button>
+          </form>
 
-        {residentMessage && <p role="status">{residentMessage}</p>}
-        {residentsLoading && <p>Loading residents...</p>}
-        {residentsError && <p role="alert">{residentsError}</p>}
-
-        {!residentsLoading &&
-          !residentsError &&
-          residents.length === 0 && (
-            <p>No residents registered yet.</p>
+          {flats.length === 0 && !flatsLoading && (
+            <p>Register a flat first before adding residents.</p>
           )}
 
-        {!residentsLoading &&
-          !residentsError &&
-          residents.map((resident) => {
-            const status = residentStatus(resident.id);
-            const isProcessing = residentActionId === resident.id;
+          {residentMessage && <p role="status">{residentMessage}</p>}
+          {residentsLoading && <p>Loading residents...</p>}
+          {residentsError && <p role="alert">{residentsError}</p>}
 
-            return (
-              <div
-                key={resident.id}
-                style={{
-                  padding: "16px 0",
-                  borderBottom: "1px solid #eee",
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: 16,
-                  flexWrap: "wrap",
-                }}
-              >
-                <div>
-                  <strong>{resident.full_name}</strong>
+          <div
+            style={{
+              display: "flex",
+              gap: 10,
+              margin: "20px 0",
+              flexWrap: "wrap",
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setResidentView("active")}
+              disabled={residentView === "active"}
+            >
+              Active Residents ({residents.filter((r) => r.is_active).length})
+            </button>
 
-                  <div>
-                    Flat {resident.flat_number ?? resident.flat_id}
-                    {resident.building
-                      ? ` — ${resident.building}`
-                      : ""}
-                  </div>
+            <button
+              type="button"
+              onClick={() => setResidentView("inactive")}
+              disabled={residentView === "inactive"}
+            >
+              Inactive Residents ({residents.filter((r) => !r.is_active).length})
+            </button>
+          </div>
 
-                  {resident.phone && <div>{resident.phone}</div>}
+          {!residentsLoading &&
+            !residentsError &&
+            displayedResidents.map((resident) => {
+              const status = residentStatus(resident.id);
+              const isProcessing =
+                residentManagementActionId === resident.id;
+              const isMovementProcessing = residentActionId === resident.id;
 
-                  <span
-                    className={`badge ${
-                      status === "Inside"
-                        ? "badge-green"
-                        : "badge-gray"
-                    }`}
-                  >
-                    <span className="badge-dot" />
-                    {status}
-                  </span>
-                </div>
-
+              return (
                 <div
+                  key={resident.id}
                   style={{
+                    padding: "16px 0",
+                    borderBottom: "1px solid #eee",
                     display: "flex",
-                    gap: 8,
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 16,
                     flexWrap: "wrap",
                   }}
                 >
-                  {status === "Inside" ? (
+                  <div>
+                    <strong>{resident.full_name}</strong>
+
+                    <div>
+                      Flat {resident.flat_number ?? resident.flat_id}
+                      {resident.building ? ` — ${resident.building}` : ""}
+                    </div>
+
+                    {resident.phone && <div>{resident.phone}</div>}
+
+                    <span
+                      className={`badge ${
+                        !resident.is_active
+                          ? "badge-gray"
+                          : status === "Inside"
+                            ? "badge-green"
+                            : "badge-gray"
+                      }`}
+                    >
+                      <span className="badge-dot" />
+                      {!resident.is_active ? "Inactive" : status}
+                    </span>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 8,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    {!resident.is_active ? (
+                      <span className="badge badge-gray">Inactive</span>
+                    ) : status === "Inside" ? (
+                      <button
+                        type="button"
+                        disabled={
+                          isMovementProcessing || residentActionId !== null
+                        }
+                        onClick={() =>
+                          void handleResidentMovementDirect(
+                            resident,
+                            "Check Out"
+                          )
+                        }
+                      >
+                        {isMovementProcessing ? "Recording..." : "Check Out"}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={
+                          isMovementProcessing || residentActionId !== null
+                        }
+                        onClick={() =>
+                          void handleResidentMovementDirect(
+                            resident,
+                            "Check In"
+                          )
+                        }
+                      >
+                        {isMovementProcessing ? "Recording..." : "Check In"}
+                      </button>
+                    )}
+
                     <button
                       type="button"
-                      disabled={isProcessing || residentActionId !== null}
+                      disabled={residentManagementActionId !== null}
                       onClick={() =>
-                        void handleResidentMovementDirect(
-                          resident,
-                          "Check Out"
-                        )
+                        void handleResidentStatusChange(resident)
                       }
                     >
-                      {isProcessing ? "Recording..." : "Check Out"}
+                      {isProcessing
+                        ? "Updating..."
+                        : resident.is_active
+                          ? "Deactivate"
+                          : "Reactivate"}
                     </button>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={isProcessing || residentActionId !== null}
-                      onClick={() =>
-                        void handleResidentMovementDirect(
-                          resident,
-                          "Check In"
-                        )
-                      }
-                    >
-                      {isProcessing ? "Recording..." : "Check In"}
-                    </button>
-                  )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
-      </section>
-    </>
-  );
-}
+              );
+            })}
+
+          {!residentsLoading &&
+            !residentsError &&
+            displayedResidents.length === 0 && (
+              <p>No {residentView} residents found.</p>
+            )}
+        </section>
+      </>
+    );
+  }
 
   // ---------------- SERVICE PROVIDERS PAGE ----------------
 
   function renderServiceProviders() {
     return (
-      <section className="panel" style={{ padding: 24 }}>
+      <section
+        id="provider-management"
+        className="panel"
+        style={{ padding: 24 }}
+      >
         <div className="panel-heading">
           <div>
             <h3>Service Provider Management</h3>
@@ -1218,8 +1417,9 @@ function renderResidents() {
             {residents
               .filter(
                 (resident) =>
-                  !secondaryFlatId ||
-                  resident.flat_id === Number(secondaryFlatId)
+                  resident.is_active &&
+                  (!secondaryFlatId ||
+                    resident.flat_id === Number(secondaryFlatId))
               )
               .map((resident) => (
                 <option key={resident.id} value={resident.id}>
@@ -1353,185 +1553,80 @@ function renderResidents() {
     );
   }
 
- // ---------------- ACCESS LOGS PAGE ----------------
+  // ---------------- ACCESS LOGS PAGE ----------------
 
-function renderAccessLogs() {
-  const filteredMovements = movements.filter((movement) =>
-    [
-      movement.full_name ?? "",
-      movement.flat_number ?? "",
-      movement.building ?? "",
-      movement.action,
-    ]
-      .join(" ")
-      .toLowerCase()
-      .includes(movementSearch.toLowerCase())
-  );
+  function renderAccessLogs() {
+    const filteredMovements = movements.filter((movement) =>
+      [
+        movement.full_name ?? "",
+        movement.flat_number ?? "",
+        movement.building ?? "",
+        movement.action,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(movementSearch.toLowerCase())
+    );
 
-  const filteredVisitorLogs = visitorAccessLogs.filter((log) =>
-    [
-      log.full_name,
-      log.flat_number,
-      log.building ?? "",
-      log.phone,
-      log.purpose,
-      log.status,
-    ]
-      .join(" ")
-      .toLowerCase()
-      .includes(movementSearch.toLowerCase())
-  );
+    const filteredVisitorLogs = visitorAccessLogs.filter((log) =>
+      [
+        log.full_name,
+        log.flat_number,
+        log.building ?? "",
+        log.phone,
+        log.purpose,
+        log.status,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(movementSearch.toLowerCase())
+    );
 
-  const refreshLogs = async () => {
-    await Promise.all([
-      loadResidentMovements(),
-      loadVisitorAccessLogs(),
-    ]);
-  };
+    const refreshLogs = async () => {
+      await Promise.all([
+        loadResidentMovements(),
+        loadVisitorAccessLogs(),
+      ]);
+    };
 
-  const isRefreshing = movementLoading || visitorLogsLoading;
+    const isRefreshing = movementLoading || visitorLogsLoading;
 
-  return (
-    <section className="panel" style={{ padding: 24 }}>
-      <div className="panel-heading">
-        <div>
-          <h3>Resident Access Logs</h3>
-          <p>Resident entry and exit history</p>
-        </div>
-        <span className="live-tag">DATABASE</span>
-      </div>
-
-      <div className="table-toolbar">
-        <div className="search-box">
-          <Search size={17} />
-          <input
-            type="search"
-            placeholder="Search resident, flat or movement..."
-            value={movementSearch}
-            onChange={(event) => setMovementSearch(event.target.value)}
-          />
-        </div>
-
-        <button
-          type="button"
-          onClick={() => void refreshLogs()}
-          disabled={isRefreshing}
-        >
-          {isRefreshing ? "Refreshing..." : "Refresh"}
-        </button>
-      </div>
-
-      {movementError && (
-        <p role="alert">
-          {movementError}{" "}
-          <button
-            type="button"
-            onClick={() => void loadResidentMovements()}
-          >
-            Retry
-          </button>
-        </p>
-      )}
-
-      <div className="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>RESIDENT</th>
-              <th>FLAT</th>
-              <th>MOVEMENT</th>
-              <th>DATE & TIME</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {movementLoading && (
-              <tr>
-                <td colSpan={4} className="empty-state">
-                  Loading movement history...
-                </td>
-              </tr>
-            )}
-
-            {!movementLoading &&
-              !movementError &&
-              filteredMovements.map((movement) => (
-                <tr key={movement.id}>
-                  <td>
-                    <div className="visitor-person">
-                      <div className="avatar visitor-avatar">
-                        {(movement.full_name ?? "R")
-                          .split(/\s+/)
-                          .map((part) => part[0] ?? "")
-                          .join("")
-                          .slice(0, 2)
-                          .toUpperCase()}
-                      </div>
-                      <span>
-                        {movement.full_name ?? "Unknown resident"}
-                      </span>
-                    </div>
-                  </td>
-
-                  <td className="flat-number">
-                    {movement.building
-                      ? `${movement.building} - ${movement.flat_number}`
-                      : movement.flat_number ?? movement.flat_id}
-                  </td>
-
-                  <td>
-                    <span
-                      className={`badge ${
-                        movement.action === "Check In"
-                          ? "badge-green"
-                          : "badge-gray"
-                      }`}
-                    >
-                      <span className="badge-dot" />
-                      {movement.action}
-                    </span>
-                  </td>
-
-                  <td>
-                    {new Date(movement.created_at).toLocaleString()}
-                  </td>
-                </tr>
-              ))}
-
-            {!movementLoading &&
-              !movementError &&
-              filteredMovements.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="empty-state">
-                    No resident movement records found.
-                  </td>
-                </tr>
-              )}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="panel-footer">
-        {movements.length} resident movement records
-      </div>
-
-      {/* VISITOR ACCESS LOGS */}
-
-      <div style={{ marginTop: 32 }}>
+    return (
+      <section className="panel" style={{ padding: 24 }}>
         <div className="panel-heading">
           <div>
-            <h3>Visitor Access Logs</h3>
-            <p>Visitor entry and exit history</p>
+            <h3>Resident Access Logs</h3>
+            <p>Resident entry and exit history</p>
           </div>
           <span className="live-tag">DATABASE</span>
         </div>
 
-        {visitorLogsError && (
+        <div className="table-toolbar">
+          <div className="search-box">
+            <Search size={17} />
+            <input
+              type="search"
+              placeholder="Search resident, flat or movement..."
+              value={movementSearch}
+              onChange={(event) => setMovementSearch(event.target.value)}
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void refreshLogs()}
+            disabled={isRefreshing}
+          >
+            {isRefreshing ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
+
+        {movementError && (
           <p role="alert">
-            {visitorLogsError}{" "}
+            {movementError}{" "}
             <button
               type="button"
-              onClick={() => void loadVisitorAccessLogs()}
+              onClick={() => void loadResidentMovements()}
             >
               Retry
             </button>
@@ -1542,84 +1637,73 @@ function renderAccessLogs() {
           <table>
             <thead>
               <tr>
-                <th>VISITOR</th>
+                <th>RESIDENT</th>
                 <th>FLAT</th>
-                <th>PURPOSE</th>
-                <th>PHONE</th>
-                <th>ENTRY TIME</th>
-                <th>EXIT TIME</th>
-                <th>STATUS</th>
+                <th>MOVEMENT</th>
+                <th>DATE & TIME</th>
               </tr>
             </thead>
 
             <tbody>
-              {visitorLogsLoading && (
+              {movementLoading && (
                 <tr>
-                  <td colSpan={7} className="empty-state">
-                    Loading visitor logs...
+                  <td colSpan={4} className="empty-state">
+                    Loading movement history...
                   </td>
                 </tr>
               )}
 
-              {!visitorLogsLoading &&
-                !visitorLogsError &&
-                filteredVisitorLogs.map((log) => (
-                  <tr key={log.id}>
+              {!movementLoading &&
+                !movementError &&
+                filteredMovements.map((movement) => (
+                  <tr key={movement.id}>
                     <td>
                       <div className="visitor-person">
                         <div className="avatar visitor-avatar">
-                          {log.full_name
+                          {(movement.full_name ?? "R")
                             .split(/\s+/)
                             .map((part) => part[0] ?? "")
                             .join("")
                             .slice(0, 2)
                             .toUpperCase()}
                         </div>
-                        <span>{log.full_name}</span>
+                        <span>
+                          {movement.full_name ?? "Unknown resident"}
+                        </span>
                       </div>
                     </td>
 
                     <td className="flat-number">
-                      {log.building
-                        ? `${log.building} - ${log.flat_number}`
-                        : log.flat_number}
-                    </td>
-
-                    <td>{log.purpose}</td>
-
-                    <td>{log.phone}</td>
-
-                    <td>
-                      {new Date(log.created_at).toLocaleString()}
-                    </td>
-
-                    <td>
-                      {log.exited_at
-                        ? new Date(log.exited_at).toLocaleString()
-                        : "—"}
+                      {movement.building
+                        ? `${movement.building} - ${movement.flat_number}`
+                        : movement.flat_number ?? movement.flat_id}
                     </td>
 
                     <td>
                       <span
                         className={`badge ${
-                          log.status === "Inside"
+                          movement.action === "Check In"
                             ? "badge-green"
                             : "badge-gray"
                         }`}
                       >
                         <span className="badge-dot" />
-                        {log.status}
+                        {movement.action}
                       </span>
+                    </td>
+
+                    <td>
+                      {new Date(movement.created_at).toLocaleString()}
                     </td>
                   </tr>
                 ))}
 
-              {!visitorLogsLoading &&
-                !visitorLogsError &&
-                filteredVisitorLogs.length === 0 && (
+              {!movementLoading &&
+                !movementError &&
+                filteredMovements.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="empty-state">
-                      No visitor access records found.
+                    <td colSpan={4} className="empty-state">
+                      No resident movement records found.
                     </td>
                   </tr>
                 )}
@@ -1628,77 +1712,196 @@ function renderAccessLogs() {
         </div>
 
         <div className="panel-footer">
-          {visitorAccessLogs.length} visitor access records
+          {movements.length} resident movement records
         </div>
-      </div>
 
-      {/* CURRENT RESIDENT STATUS */}
+        {/* VISITOR ACCESS LOGS */}
 
-      <div style={{ marginTop: 32 }}>
-        <div className="panel-heading">
-          <div>
-            <h3>Current Resident Status</h3>
-            <p>Latest recorded movement for each resident</p>
+        <div style={{ marginTop: 32 }}>
+          <div className="panel-heading">
+            <div>
+              <h3>Visitor Access Logs</h3>
+              <p>Visitor entry and exit history</p>
+            </div>
+            <span className="live-tag">DATABASE</span>
+          </div>
+
+          {visitorLogsError && (
+            <p role="alert">
+              {visitorLogsError}{" "}
+              <button
+                type="button"
+                onClick={() => void loadVisitorAccessLogs()}
+              >
+                Retry
+              </button>
+            </p>
+          )}
+
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>VISITOR</th>
+                  <th>FLAT</th>
+                  <th>PURPOSE</th>
+                  <th>PHONE</th>
+                  <th>ENTRY TIME</th>
+                  <th>EXIT TIME</th>
+                  <th>STATUS</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {visitorLogsLoading && (
+                  <tr>
+                    <td colSpan={7} className="empty-state">
+                      Loading visitor logs...
+                    </td>
+                  </tr>
+                )}
+
+                {!visitorLogsLoading &&
+                  !visitorLogsError &&
+                  filteredVisitorLogs.map((log) => (
+                    <tr key={log.id}>
+                      <td>
+                        <div className="visitor-person">
+                          <div className="avatar visitor-avatar">
+                            {log.full_name
+                              .split(/\s+/)
+                              .map((part) => part[0] ?? "")
+                              .join("")
+                              .slice(0, 2)
+                              .toUpperCase()}
+                          </div>
+                          <span>{log.full_name}</span>
+                        </div>
+                      </td>
+
+                      <td className="flat-number">
+                        {log.building
+                          ? `${log.building} - ${log.flat_number}`
+                          : log.flat_number}
+                      </td>
+
+                      <td>{log.purpose}</td>
+                      <td>{log.phone}</td>
+
+                      <td>
+                        {new Date(log.created_at).toLocaleString()}
+                      </td>
+
+                      <td>
+                        {log.exited_at
+                          ? new Date(log.exited_at).toLocaleString()
+                          : "—"}
+                      </td>
+
+                      <td>
+                        <span
+                          className={`badge ${
+                            log.status === "Inside"
+                              ? "badge-green"
+                              : "badge-gray"
+                          }`}
+                        >
+                          <span className="badge-dot" />
+                          {log.status}
+                        </span>
+                        {log.is_archived && (
+                          <small style={{ display: "block" }}>Archived</small>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+
+                {!visitorLogsLoading &&
+                  !visitorLogsError &&
+                  filteredVisitorLogs.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="empty-state">
+                        No visitor access records found.
+                      </td>
+                    </tr>
+                  )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="panel-footer">
+            {visitorAccessLogs.length} visitor access records
           </div>
         </div>
 
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>RESIDENT</th>
-                <th>FLAT</th>
-                <th>CURRENT STATUS</th>
-                <th>LAST MOVEMENT</th>
-              </tr>
-            </thead>
+        {/* CURRENT RESIDENT STATUS */}
 
-            <tbody>
-              {currentStatuses.map((resident) => (
-                <tr key={resident.resident_id}>
-                  <td>{resident.full_name}</td>
+        <div style={{ marginTop: 32 }}>
+          <div className="panel-heading">
+            <div>
+              <h3>Current Resident Status</h3>
+              <p>Latest recorded movement for each resident</p>
+            </div>
+          </div>
 
-                  <td>
-                    {resident.building
-                      ? `${resident.building} - ${resident.flat_number}`
-                      : resident.flat_number}
-                  </td>
-
-                  <td>
-                    <span
-                      className={`badge ${
-                        resident.status === "Inside"
-                          ? "badge-green"
-                          : "badge-gray"
-                      }`}
-                    >
-                      <span className="badge-dot" />
-                      {resident.status}
-                    </span>
-                  </td>
-
-                  <td>
-                    {resident.created_at
-                      ? new Date(resident.created_at).toLocaleString()
-                      : "No movement recorded"}
-                  </td>
-                </tr>
-              ))}
-
-              {currentStatuses.length === 0 && !movementLoading && (
+          <div className="table-scroll">
+            <table>
+              <thead>
                 <tr>
-                  <td colSpan={4} className="empty-state">
-                    No resident status data available.
-                  </td>
+                  <th>RESIDENT</th>
+                  <th>FLAT</th>
+                  <th>CURRENT STATUS</th>
+                  <th>LAST MOVEMENT</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+
+              <tbody>
+                {currentStatuses.map((resident) => (
+                  <tr key={resident.resident_id}>
+                    <td>{resident.full_name}</td>
+
+                    <td>
+                      {resident.building
+                        ? `${resident.building} - ${resident.flat_number}`
+                        : resident.flat_number}
+                    </td>
+
+                    <td>
+                      <span
+                        className={`badge ${
+                          resident.status === "Inside"
+                            ? "badge-green"
+                            : "badge-gray"
+                        }`}
+                      >
+                        <span className="badge-dot" />
+                        {resident.status}
+                      </span>
+                    </td>
+
+                    <td>
+                      {resident.created_at
+                        ? new Date(resident.created_at).toLocaleString()
+                        : "No movement recorded"}
+                    </td>
+                  </tr>
+                ))}
+
+                {currentStatuses.length === 0 && !movementLoading && (
+                  <tr>
+                    <td colSpan={4} className="empty-state">
+                      No resident status data available.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
-    </section>
-  );
-}
+      </section>
+    );
+  }
+
   // ---------------- DASHBOARD ----------------
 
   function renderDashboard() {
@@ -1748,7 +1951,7 @@ function renderAccessLogs() {
               <div className="metric-details">
                 <span>Visitors currently inside</span>
                 <strong>
-                  {visitors.filter((v) => v.status === "Inside").length}
+                  {activeVisitors.filter((v) => v.status === "Inside").length}
                 </strong>
               </div>
             </div>
@@ -1904,7 +2107,9 @@ function renderAccessLogs() {
               <Settings size={27} />
             </div>
             <h3>Settings</h3>
-            <p>Authentication, roles, and society settings are not implemented yet.</p>
+            <p>
+              Authentication, roles, and society settings are not implemented yet.
+            </p>
             <span className="coming-soon">INTERFACE IN DEVELOPMENT</span>
           </section>
         );
@@ -1968,7 +2173,9 @@ function renderAccessLogs() {
                 <span>{item.label}</span>
 
                 {item.label === "Visitors" && (
-                  <span className="nav-count">{visitors.length}</span>
+                  <span className="nav-count">
+                    {activeVisitors.length}
+                  </span>
                 )}
               </button>
             );
@@ -2153,7 +2360,7 @@ function renderAccessLogs() {
                 </p>
 
                 {qrScanResult.residents.length === 0 ? (
-                  <p>No residents are registered under this flat.</p>
+                  <p>No active residents are registered under this flat.</p>
                 ) : (
                   <>
                     <label htmlFor="movement-resident">

@@ -5,6 +5,9 @@ import {
   deactivateSecondaryPerson, type Flat, type Resident, type Visitor,
   type SecondaryPerson,
 } from "./api";
+import { QRCodeSVG } from "qrcode.react";
+import { Html5QrcodeScanner } from "html5-qrcode";
+import { validateSecondaryQR } from "./api";
 import {
   LayoutDashboard, Users, UserRoundCog, ClipboardList, ShieldCheck,
   Settings, Search, Bell, Plus, ArrowUpRight, ArrowDownRight, Clock,
@@ -52,6 +55,9 @@ export default function App() {
   const [secondaryResidentId, setSecondaryResidentId] = useState("");
   const [secondaryMessage, setSecondaryMessage] = useState("");
   const [newProviderQR, setNewProviderQR] = useState("");
+  const [showQRScanner, setShowQRScanner] = useState(false);
+  const [qrScanResult, setQrScanResult] = useState("");
+  const [qrScanBusy, setQrScanBusy] = useState(false);
 
   const [visitors, setVisitors] = useState<Visitor[]>([]);
   const [visitorsLoading, setVisitorsLoading] = useState(true);
@@ -102,6 +108,35 @@ export default function App() {
     void loadVisitors();
     void loadSecondaryPeople();
   }, [loadVisitors, loadSecondaryPeople]);
+
+  useEffect(() => {
+    if (!showQRScanner) return;
+    const scanner = new Html5QrcodeScanner(
+      "gatepass-qr-reader",
+      { fps: 10, qrbox: { width: 230, height: 230 }, rememberLastUsedCamera: true },
+      false
+    );
+    scanner.render(
+      async (decodedText) => {
+        if (qrScanBusy) return;
+        setQrScanBusy(true);
+        try {
+          const result = await validateSecondaryQR(decodedText);
+          setQrScanResult(result.valid
+            ? `Verified: ${result.person.full_name} · ${result.person.category} · ${result.person.flat_number ?? "Flat unavailable"}`
+            : "This QR code is not valid.");
+          await scanner.clear();
+        } catch (error) {
+          setQrScanResult(error instanceof Error ? error.message : "QR verification failed.");
+          await scanner.clear().catch(() => undefined);
+        } finally {
+          setQrScanBusy(false);
+        }
+      },
+      () => {}
+    );
+    return () => { void scanner.clear().catch(() => undefined); };
+  }, [showQRScanner]);
 
   const today = new Date().toDateString();
   const stats = [
@@ -481,10 +516,16 @@ export default function App() {
               {newProviderQR && (
                 <div style={{ padding: 16, background: "#f0fdf4", marginBottom: 20 }}>
                   <strong>New provider QR token</strong>
+                  <div style={{ background: "white", display: "inline-block", padding: 14, margin: "12px 0" }}>
+                    <QRCodeSVG value={newProviderQR} size={220} level="H" includeMargin />
+                  </div>
                   <p style={{ overflowWrap: "anywhere" }}>{newProviderQR}</p>
-                  <small>Keep this token private. A scannable QR display will be added separately.</small>
+                  <small>Save or print this QR code for the registered service provider.</small>
                 </div>
               )}
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 20 }}>
+                <button type="button" onClick={() => { setQrScanResult(""); setShowQRScanner(true); }}>Scan Provider QR</button>
+              </div>
               <h3>Registered Providers</h3>
               {secondaryLoading && <p>Loading providers...</p>}
               {secondaryError && <p>{secondaryError}</p>}
@@ -521,6 +562,21 @@ export default function App() {
           )}
         </div>
       </main>
+
+      {showQRScanner && (
+        <div className="modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget) setShowQRScanner(false); }}>
+          <section className="visitor-modal" style={{ maxWidth: 520 }}>
+            <div className="modal-heading">
+              <div><span className="eyebrow">GATE OPERATIONS</span><h3>Scan Service Provider QR</h3></div>
+              <button type="button" className="icon-button" onClick={() => setShowQRScanner(false)} aria-label="Close scanner"><X size={20} /></button>
+            </div>
+            <div id="gatepass-qr-reader" />
+            {qrScanBusy && <p>Verifying QR code...</p>}
+            {qrScanResult && <p role="status" style={{ padding: 12, background: "#f0fdf4", borderRadius: 8 }}>{qrScanResult}</p>}
+            <small>Camera access is required. Use a secure HTTPS connection and allow camera permission when prompted.</small>
+          </section>
+        </div>
+      )}
 
       {showVisitorForm && (
         <div className="modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget) setShowVisitorForm(false); }}>

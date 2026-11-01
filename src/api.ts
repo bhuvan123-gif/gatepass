@@ -1,6 +1,4 @@
-
-export const API_BASE_URL =
-  "https://gatepass-api-eb51.onrender.com";
+export const API_BASE_URL = "https://gatepass-api-eb51.onrender.com";
 
 async function apiRequest<T>(
   endpoint: string,
@@ -16,32 +14,33 @@ async function apiRequest<T>(
 
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
-
     try {
       const error = await response.json();
       message = error.detail || message;
     } catch {
-      // Keep the fallback message if the response isn't JSON.
+      // Keep the fallback error message.
     }
-
     throw new Error(message);
   }
 
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
+  if (response.status === 204) return undefined as T;
   return response.json();
 }
 
-function post<T>(endpoint: string, body: unknown): Promise<T> {
+function get<T>(endpoint: string) {
+  return apiRequest<T>(endpoint);
+}
+
+function post<T>(endpoint: string, body: unknown) {
   return apiRequest<T>(endpoint, {
     method: "POST",
     body: JSON.stringify(body),
   });
 }
 
-// ---------------- FLATS ----------------
+function remove(endpoint: string) {
+  return apiRequest<void>(endpoint, { method: "DELETE" });
+}
 
 export interface Flat {
   id: number;
@@ -52,15 +51,7 @@ export interface Flat {
 
 export interface FlatCreate {
   flat_number: string;
-  building?: string;
-}
-
-export function getFlats() {
-  return apiRequest<Flat[]>("/flats");
-}
-
-export function createFlat(data: FlatCreate) {
-  return post<Flat>("/flats", data);
+  building?: string | null;
 }
 
 export interface FlatQRCreated {
@@ -69,13 +60,6 @@ export interface FlatQRCreated {
   flat: Flat;
   qr_token: string;
 }
-
-export function generateFlatQR(flatId: number) {
-  return post<FlatQRCreated>(`/flats/${flatId}/qr`, {});
-}
-
-
-// ---------------- RESIDENTS ----------------
 
 export interface Resident {
   id: number;
@@ -91,102 +75,10 @@ export interface Resident {
 export interface ResidentCreate {
   full_name: string;
   flat_id: number;
-  phone?: string;
+  phone: string;
 }
-
-export function getResidents() {
-  return apiRequest<Resident[]>("/residents");
-}
-
-export function createResident(data: ResidentCreate) {
-  return post<Resident>("/residents", data);
-}
-
-// Deactivate resident without deleting their records.
-export function deactivateResident(residentId: number) {
-  return apiRequest<Resident>(
-    `/residents/${residentId}/deactivate`,
-    {
-      method: "PATCH",
-    }
-  );
-}
-
-// Reactivate a previously deactivated resident.
-export function reactivateResident(residentId: number) {
-  return apiRequest<Resident>(
-    `/residents/${residentId}/reactivate`,
-    {
-      method: "PATCH",
-    }
-  );
-}
-
-
-// ---------------- VISITORS ----------------
 
 export interface Visitor {
-  id: number;
-  full_name: string;
-  flat_id: number;
-  flat_number?: string;
-  building?: string | null;
-  phone: string;
-  purpose: string;
-  status: string;
-  created_at: string;
-  exited_at?: string | null;
-  is_archived: boolean;
-}
-
-export interface VisitorCreate {
-  full_name: string;
-  flat_id: number;
-  phone: string;
-  purpose: string;
-}
-
-export function getVisitors() {
-  return apiRequest<Visitor[]>("/visitors");
-}
-
-export function createVisitor(data: VisitorCreate) {
-  return post<Visitor>("/visitors", data);
-}
-
-export function checkoutVisitor(visitorId: number) {
-  return apiRequest<Visitor>(
-    `/visitors/${visitorId}/checkout`,
-    {
-      method: "PATCH",
-    }
-  );
-}
-
-// Archive a visitor without deleting their history.
-export function archiveVisitor(visitorId: number) {
-  return apiRequest<Visitor>(
-    `/visitors/${visitorId}/archive`,
-    {
-      method: "PATCH",
-    }
-  );
-}
-
-// Restore an archived visitor.
-export function restoreVisitor(visitorId: number) {
-  return apiRequest<Visitor>(
-    `/visitors/${visitorId}/restore`,
-    {
-      method: "PATCH",
-    }
-  );
-}
-
-
-// ---------------- VISITOR ACCESS LOGS ----------------
-
-export interface VisitorAccessLog {
   id: number;
   full_name: string;
   flat_id: number;
@@ -196,16 +88,18 @@ export interface VisitorAccessLog {
   purpose: string;
   status: string;
   created_at: string;
-  exited_at: string | null;
-  is_archived: boolean;
+  exited_at?: string | null;
+  vehicle_number?: string | null;
+  is_archived?: boolean;
 }
 
-export function getVisitorAccessLogs() {
-  return apiRequest<VisitorAccessLog[]>("/visitor-access-logs");
+export interface VisitorCreate {
+  full_name: string;
+  flat_id: number;
+  phone: string;
+  purpose: string;
+  vehicle_number?: string | null;
 }
-
-
-// ---------------- SERVICE PROVIDERS ----------------
 
 export interface SecondaryPerson {
   id: number;
@@ -233,97 +127,108 @@ export interface SecondaryPersonCreated extends SecondaryPerson {
   qr_token: string;
 }
 
-export function getSecondaryPeople() {
-  return apiRequest<SecondaryPerson[]>("/secondary-people");
+export interface QRValidationResult {
+  valid: boolean;
+  type: "flat" | "secondary";
+  flat?: Flat;
+  residents?: Resident[];
+  person?: SecondaryPerson;
 }
-
-export function createSecondaryPerson(data: SecondaryPersonCreate) {
-  return post<SecondaryPersonCreated>("/secondary-people", data);
-}
-
-export function deactivateSecondaryPerson(personId: number) {
-  return apiRequest<SecondaryPerson>(
-    `/secondary-people/${personId}/deactivate`,
-    {
-      method: "PATCH",
-    }
-  );
-}
-
-
-// ---------------- QR VALIDATION ----------------
-
-export interface FlatQRValidation {
-  valid: true;
-  type: "flat";
-  flat: Flat;
-  residents: Resident[];
-}
-
-export interface SecondaryQRValidation {
-  valid: true;
-  type: "secondary";
-  person: SecondaryPerson;
-}
-
-export type QRValidationResult =
-  | FlatQRValidation
-  | SecondaryQRValidation;
-
-export function validateQR(token: string) {
-  return post<QRValidationResult>("/qr/validate", { token });
-}
-
-// Backward-compatible alias if another component still uses this name.
-export function validateSecondaryQR(token: string) {
-  return validateQR(token);
-}
-
-
-// ---------------- RESIDENT MOVEMENTS ----------------
 
 export type MovementAction = "Check In" | "Check Out";
 
-export interface ResidentMovement {
+export interface MovementCreate {
+  action: MovementAction;
+  vehicle_number?: string | null;
+}
+
+export interface ResidentMovement extends MovementCreate {
   id: number;
   resident_id: number;
   flat_id: number;
-  action: MovementAction;
   created_at: string;
   full_name?: string;
   phone?: string;
   flat_number?: string;
   building?: string | null;
-  status?: "Inside" | "Outside";
+  status?: "Inside" | "Outside" | "Unknown";
 }
 
-export interface CurrentResidentStatus {
-  resident_id: number;
-  full_name: string;
+export interface ProviderMovement extends MovementCreate {
+  id: number;
+  person_id: number;
   flat_id: number;
-  flat_number: string;
-  building: string | null;
-  action: MovementAction | null;
-  created_at: string | null;
-  status: "Inside" | "Outside" | "Unknown";
+  created_at: string;
+  full_name?: string;
+  category?: string;
+  flat_number?: string;
+  building?: string | null;
+  status?: "Inside" | "Outside" | "Unknown";
 }
 
-export function getResidentMovements() {
-  return apiRequest<ResidentMovement[]>("/resident-movements");
-}
+// Flats
+export const getFlats = () => get<Flat[]>("/flats");
+export const createFlat = (data: FlatCreate) => post<Flat>("/flats", data);
+export const deleteFlat = (id: number) => remove(`/flats/${id}`);
+export const generateFlatQR = (id: number) =>
+  post<FlatQRCreated>(`/flats/${id}/qr`, {});
 
-export function getCurrentResidentStatus() {
-  return apiRequest<CurrentResidentStatus[]>(
-    "/resident-movements/current"
-  );
-}
+// Residents
+export const getResidents = () => get<Resident[]>("/residents");
+export const createResident = (data: ResidentCreate) =>
+  post<Resident>("/residents", data);
+export const deleteResident = (id: number) =>
+  remove(`/residents/${id}`);
 
-export function recordResidentMovement(
+// Visitors
+export const getVisitors = () => get<Visitor[]>("/visitors");
+export const createVisitor = (data: VisitorCreate) =>
+  post<Visitor>("/visitors", data);
+export const checkoutVisitor = (id: number) =>
+  apiRequest<Visitor>(`/visitors/${id}/checkout`, { method: "PATCH" });
+export const deleteVisitor = (id: number) => remove(`/visitors/${id}`);
+
+// Service providers
+export const getSecondaryPeople = () =>
+  get<SecondaryPerson[]>("/secondary-people");
+export const createSecondaryPerson = (data: SecondaryPersonCreate) =>
+  post<SecondaryPersonCreated>("/secondary-people", data);
+export const deleteSecondaryPerson = (id: number) =>
+  remove(`/secondary-people/${id}`);
+
+// QR
+export const validateQR = (token: string) =>
+  post<QRValidationResult>("/qr/validate", { token });
+export const validateSecondaryQR = validateQR;
+
+// Resident movements
+export const getResidentMovements = () =>
+  get<ResidentMovement[]>("/resident-movements");
+export const getCurrentResidentStatus = () =>
+  get<ResidentMovement[]>("/resident-movements/current");
+export const recordResidentMovement = (
   residentId: number,
-  action: MovementAction
-) {
-  return post<ResidentMovement>("/resident-movements", {
+  data: MovementCreate
+) =>
+  post<ResidentMovement>("/resident-movements", {
     resident_id: residentId,
-    action,
+    ...data,
   });
-}
+
+// Service-provider movements
+export const getProviderMovements = () =>
+  get<ProviderMovement[]>("/secondary-person-movements");
+export const getCurrentProviderStatus = () =>
+  get<ProviderMovement[]>("/secondary-person-movements/current");
+export const recordProviderMovement = (
+  personId: number,
+  data: MovementCreate
+) =>
+  post<ProviderMovement>("/secondary-person-movements", {
+    person_id: personId,
+    ...data,
+  });
+
+// Visitor logs
+export const getVisitorAccessLogs = () =>
+  get<Visitor[]>("/visitor-access-logs");

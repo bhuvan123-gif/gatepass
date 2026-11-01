@@ -210,7 +210,6 @@ def create_flat(data: FlatCreate):
         logger.exception("Could not create flat")
         raise HTTPException(status_code=500, detail="Could not create flat")
 
-
 @app.post("/flats/{flat_id}/qr")
 def generate_flat_qr(flat_id: int):
     token = secrets.token_urlsafe(32)
@@ -224,12 +223,30 @@ def generate_flat_qr(flat_id: int):
                 WHERE id = %s
                 RETURNING id, flat_number, building
             """, (token_hash, flat_id))
-            flat = cursor.fetchone()
+
+            row = cursor.fetchone()
+
+            if not row:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Flat not found"
+                )
+
+            # Support both dictionary and tuple cursors
+            if isinstance(row, dict):
+                flat = {
+                    "id": row["id"],
+                    "flat_number": row["flat_number"],
+                    "building": row["building"],
+                }
+            else:
+                flat = {
+                    "id": row[0],
+                    "flat_number": row[1],
+                    "building": row[2],
+                }
 
         connection.commit()
-
-    if not flat:
-        raise HTTPException(status_code=404, detail="Flat not found")
 
     return {
         "valid": True,
@@ -237,7 +254,6 @@ def generate_flat_qr(flat_id: int):
         "flat": flat,
         "qr_token": token,
     }
-
 
 @app.get("/residents")
 def get_residents():

@@ -1,21 +1,54 @@
+
 import { useCallback, useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Html5QrcodeScanner } from "html5-qrcode";
+
 import {
-  getFlats, createFlat, deleteFlat, generateFlatQR,
-  getResidents, createResident, deleteResident,
-  getVisitors, createVisitor, checkoutVisitor, deleteVisitor,
-  getSecondaryPeople, createSecondaryPerson, deleteSecondaryPerson,
-  validateQR, getCurrentResidentStatus, recordResidentMovement,
-  getCurrentProviderStatus, recordProviderMovement,
-  type Flat, type Resident, type Visitor, type SecondaryPerson,
-  type MovementAction, type FlatQRCreated,
+  getFlats,
+  createFlat,
+  deleteFlat,
+  generateFlatQR,
+  getResidents,
+  createResident,
+  deleteResident,
+  getVisitors,
+  createVisitor,
+  checkoutVisitor,
+  deleteVisitor,
+  getSecondaryPeople,
+  createSecondaryPerson,
+  deleteSecondaryPerson,
+  generateSecondaryPersonQR,
+  validateQR,
+  getCurrentResidentStatus,
+  recordResidentMovement,
+  getCurrentProviderStatus,
+  recordProviderMovement,
+  type Flat,
+  type Resident,
+  type Visitor,
+  type SecondaryPerson,
+  type MovementAction,
+  type FlatQRCreated,
 } from "./api";
+
 import {
-  LayoutDashboard, Users, UserRoundCog, ClipboardList,
-  ShieldCheck, Settings, Search, Plus, Trash2, Menu, X,
-  QrCode, ArrowDownRight, ArrowUpRight,
+  LayoutDashboard,
+  Users,
+  UserRoundCog,
+  ClipboardList,
+  ShieldCheck,
+  Settings,
+  Search,
+  Plus,
+  Trash2,
+  Menu,
+  X,
+  QrCode,
+  ArrowDownRight,
+  ArrowUpRight,
 } from "lucide-react";
+
 
 type Page =
   | "Dashboard"
@@ -25,6 +58,7 @@ type Page =
   | "Visitors"
   | "Access Logs";
 
+
 const navigation = [
   { label: "Dashboard", icon: LayoutDashboard },
   { label: "Flats", icon: LayoutDashboard },
@@ -33,6 +67,7 @@ const navigation = [
   { label: "Visitors", icon: ClipboardList },
   { label: "Access Logs", icon: ShieldCheck },
 ] as const;
+
 
 export default function App() {
   const [page, setPage] = useState<Page>("Dashboard");
@@ -44,6 +79,7 @@ export default function App() {
   const [residents, setResidents] = useState<Resident[]>([]);
   const [visitors, setVisitors] = useState<Visitor[]>([]);
   const [providers, setProviders] = useState<SecondaryPerson[]>([]);
+
   const [residentStatuses, setResidentStatuses] = useState<any[]>([]);
   const [providerStatuses, setProviderStatuses] = useState<any[]>([]);
 
@@ -65,14 +101,18 @@ export default function App() {
   const [visitorPurpose, setVisitorPurpose] = useState("Personal Visit");
   const [visitorVehicle, setVisitorVehicle] = useState("");
 
-const [qrToken, setQrToken] = useState("");
-const [flatQr, setFlatQr] = useState<FlatQRCreated | null>(null);
-const [providerQr, setProviderQr] = useState<{
-  name: string;
-  token: string;
-} | null>(null);
+  const [flatQr, setFlatQr] = useState<FlatQRCreated | null>(null);
+
+  const [providerQr, setProviderQr] = useState<{
+    name: string;
+    token: string;
+  } | null>(null);
+
   const [scanEnabled, setScanEnabled] = useState(false);
   const [scanResult, setScanResult] = useState("");
+
+
+  // -------------------- LOAD DATA --------------------
 
   const loadAll = useCallback(async () => {
     try {
@@ -100,13 +140,19 @@ const [providerQr, setProviderQr] = useState<{
       setProviderStatuses(providerStatusData);
       setMessage("");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not load data.");
+      setMessage(
+        error instanceof Error ? error.message : "Could not load data."
+      );
     }
   }, []);
+
 
   useEffect(() => {
     void loadAll();
   }, [loadAll]);
+
+
+  // -------------------- QR SCANNER --------------------
 
   useEffect(() => {
     if (!scanEnabled) return;
@@ -121,6 +167,7 @@ const [providerQr, setProviderQr] = useState<{
       async (decodedText) => {
         try {
           const result = await validateQR(decodedText);
+
           if (result.type === "flat" && result.flat) {
             setScanResult(
               `Verified flat: ${result.flat.building ?? ""} ${result.flat.flat_number}`
@@ -132,10 +179,16 @@ const [providerQr, setProviderQr] = useState<{
           } else {
             setScanResult("QR verified.");
           }
+
           await scanner.clear();
           setScanEnabled(false);
         } catch (error) {
-          setScanResult(error instanceof Error ? error.message : "QR verification failed.");
+          setScanResult(
+            error instanceof Error
+              ? error.message
+              : "QR verification failed."
+          );
+
           await scanner.clear().catch(() => undefined);
           setScanEnabled(false);
         }
@@ -148,44 +201,82 @@ const [providerQr, setProviderQr] = useState<{
     };
   }, [scanEnabled]);
 
+
+  // -------------------- HELPERS --------------------
+
   function confirmDelete(label: string) {
     return window.confirm(
       `Permanently delete ${label}? This cannot be undone.`
     );
   }
 
+
   async function handleDelete(
     label: string,
     action: () => Promise<void>
   ) {
     if (!confirmDelete(label)) return;
+
     try {
       await action();
       await loadAll();
       setMessage(`${label} permanently deleted.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Delete failed.");
+      setMessage(
+        error instanceof Error ? error.message : "Delete failed."
+      );
     }
   }
 
+
+  function flatLabel(flat: Flat) {
+    return `${flat.building ? `${flat.building} - ` : ""}${flat.flat_number}`;
+  }
+
+
+  function residentStatus(id: number) {
+    return residentStatuses.find(
+      (item) => item.resident_id === id
+    )?.status ?? "Unknown";
+  }
+
+
+  function providerStatus(id: number) {
+    return providerStatuses.find(
+      (item) => item.person_id === id
+    )?.status ?? "Unknown";
+  }
+
+
+  // -------------------- FLAT REGISTRATION --------------------
+
   async function handleFlatSubmit(event: React.FormEvent) {
     event.preventDefault();
+
     try {
       await createFlat({
         flat_number: flatNumber.trim(),
         building: building.trim() || null,
       });
+
       setFlatNumber("");
       setBuilding("");
       setMessage("Flat registered.");
+
       await loadAll();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not register flat.");
+      setMessage(
+        error instanceof Error ? error.message : "Could not register flat."
+      );
     }
   }
 
+
+  // -------------------- RESIDENT REGISTRATION --------------------
+
   async function handleResidentSubmit(event: React.FormEvent) {
     event.preventDefault();
+
     if (!/^[0-9]{10}$/.test(residentPhone)) {
       setMessage("Resident phone number must contain exactly 10 digits.");
       return;
@@ -197,20 +288,30 @@ const [providerQr, setProviderQr] = useState<{
         flat_id: Number(residentFlat),
         phone: residentPhone,
       });
+
       setResidentName("");
       setResidentFlat("");
       setResidentPhone("");
       setMessage("Resident registered.");
+
       await loadAll();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not register resident.");
+      setMessage(
+        error instanceof Error ? error.message : "Could not register resident."
+      );
     }
   }
 
+
+  // -------------------- PROVIDER REGISTRATION --------------------
+
   async function handleProviderSubmit(event: React.FormEvent) {
     event.preventDefault();
+
     if (!/^[0-9]{10}$/.test(providerPhone)) {
-      setMessage("Service provider phone number must contain exactly 10 digits.");
+      setMessage(
+        "Service provider phone number must contain exactly 10 digits."
+      );
       return;
     }
 
@@ -232,22 +333,56 @@ const [providerQr, setProviderQr] = useState<{
         flat_id: resident.flat_id,
       });
 
-     setProviderQr({
-  name: created.full_name,
-  token: created.qr_token,
-});
+      setProviderQr({
+        name: created.full_name,
+        token: created.qr_token,
+      });
+
       setProviderName("");
       setProviderPhone("");
       setProviderResident("");
+
       setMessage("Service provider registered. Save their QR code.");
+
       await loadAll();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not register provider.");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not register provider."
+      );
     }
   }
 
+
+  // Generate or regenerate QR for an existing provider.
+  async function handleProviderQR(person: SecondaryPerson) {
+    try {
+      const result = await generateSecondaryPersonQR(person.id);
+
+      setProviderQr({
+        name: result.person.full_name,
+        token: result.qr_token,
+      });
+
+      setMessage(
+        `New QR generated for ${person.full_name}. Previous QR is no longer valid.`
+      );
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not generate provider QR."
+      );
+    }
+  }
+
+
+  // -------------------- VISITOR REGISTRATION --------------------
+
   async function handleVisitorSubmit(event: React.FormEvent) {
     event.preventDefault();
+
     if (!/^[0-9]{10}$/.test(visitorPhone)) {
       setMessage("Visitor phone number must contain exactly 10 digits.");
       return;
@@ -267,21 +402,31 @@ const [providerQr, setProviderQr] = useState<{
       setVisitorFlat("");
       setVisitorVehicle("");
       setVisitorPurpose("Personal Visit");
+
       setMessage("Visitor checked in successfully.");
+
       await loadAll();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not register visitor.");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not register visitor."
+      );
     }
   }
+
+
+  // -------------------- MOVEMENTS --------------------
 
   async function movement(
     kind: "resident" | "provider",
     id: number,
     action: MovementAction
   ) {
-    const vehicle = action === "Check In"
-      ? window.prompt("Vehicle number (if applicable):") ?? ""
-      : "";
+    const vehicle =
+      action === "Check In"
+        ? window.prompt("Vehicle number (if applicable):") ?? ""
+        : "";
 
     try {
       if (kind === "resident") {
@@ -295,51 +440,68 @@ const [providerQr, setProviderQr] = useState<{
           vehicle_number: vehicle.trim() || null,
         });
       }
+
       setMessage(`${action} recorded.`);
       await loadAll();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Movement could not be recorded.");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Movement could not be recorded."
+      );
     }
   }
+
+
+  // -------------------- FLAT QR --------------------
 
   async function handleFlatQR(flat: Flat) {
     try {
       const result = await generateFlatQR(flat.id);
+
       setFlatQr(result);
-      setMessage("New flat QR generated. Previous QR for this flat is replaced.");
+
+      setMessage(
+        "New flat QR generated. Previous QR for this flat is replaced."
+      );
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Could not generate flat QR.");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Could not generate flat QR."
+      );
     }
   }
 
-  const insideVisitors = visitors.filter((v) => v.status === "Inside");
+
+  // -------------------- DASHBOARD DATA --------------------
+
+  const insideVisitors = visitors.filter(
+    (visitor) => visitor.status === "Inside"
+  );
+
   const today = new Date().toDateString();
+
   const todayVisitors = visitors.filter(
-    (v) => new Date(v.created_at).toDateString() === today
+    (visitor) => new Date(visitor.created_at).toDateString() === today
   );
 
-  const filteredVisitors = visitors.filter((v) =>
+  const filteredVisitors = visitors.filter((visitor) =>
     [
-      v.full_name,
-      v.flat_number,
-      v.building ?? "",
-      v.phone,
-      v.purpose,
-      v.status,
-    ].join(" ").toLowerCase().includes(search.toLowerCase())
+      visitor.full_name,
+      visitor.flat_number,
+      visitor.building ?? "",
+      visitor.phone,
+      visitor.purpose,
+      visitor.status,
+    ]
+      .join(" ")
+      .toLowerCase()
+      .includes(search.toLowerCase())
   );
 
-  function residentStatus(id: number) {
-    return residentStatuses.find((item) => item.resident_id === id)?.status ?? "Unknown";
-  }
 
-  function providerStatus(id: number) {
-    return providerStatuses.find((item) => item.person_id === id)?.status ?? "Unknown";
-  }
-
-  function flatLabel(flat: Flat) {
-    return `${flat.building ? `${flat.building} - ` : ""}${flat.flat_number}`;
-  }
+  // -------------------- FLATS PAGE --------------------
 
   function renderFlats() {
     return (
@@ -350,18 +512,22 @@ const [providerQr, setProviderQr] = useState<{
         <form onSubmit={handleFlatSubmit} className="management-form">
           <input
             value={flatNumber}
-            onChange={(e) => setFlatNumber(e.target.value)}
+            onChange={(event) => setFlatNumber(event.target.value)}
             placeholder="Flat number (e.g. A-101)"
             required
             maxLength={30}
           />
+
           <input
             value={building}
-            onChange={(e) => setBuilding(e.target.value)}
+            onChange={(event) => setBuilding(event.target.value)}
             placeholder="Building / tower"
             maxLength={60}
           />
-          <button type="submit"><Plus size={16} /> Register Flat</button>
+
+          <button type="submit">
+            <Plus size={16} /> Register Flat
+          </button>
         </form>
 
         {flats.map((flat) => (
@@ -369,17 +535,24 @@ const [providerQr, setProviderQr] = useState<{
             <div>
               <strong>{flatLabel(flat)}</strong>
             </div>
+
             <div className="row-actions">
-              <button type="button" onClick={() => void handleFlatQR(flat)}>
+              <button
+                type="button"
+                onClick={() => void handleFlatQR(flat)}
+              >
                 <QrCode size={15} /> Generate QR
               </button>
+
               <button
                 type="button"
                 className="danger-button"
-                onClick={() => void handleDelete(
-                  `flat ${flatLabel(flat)} and all its associated records`,
-                  () => deleteFlat(flat.id)
-                )}
+                onClick={() =>
+                  void handleDelete(
+                    `flat ${flatLabel(flat)} and all its associated records`,
+                    () => deleteFlat(flat.id)
+                  )
+                }
               >
                 <Trash2 size={15} /> Delete
               </button>
@@ -388,33 +561,42 @@ const [providerQr, setProviderQr] = useState<{
         ))}
 
         {flatQr && (
-  <div className="qr-card">
-    <h4>Flat QR: {flatLabel(flatQr.flat)}</h4>
+          <div className="qr-card">
+            <h4>Flat QR: {flatLabel(flatQr.flat)}</h4>
 
-    <QRCodeSVG value={flatQr.qr_token} size={180} />
+            <QRCodeSVG value={flatQr.qr_token} size={180} />
 
-    <p><strong>QR Code / Token:</strong></p>
-    <code style={{ wordBreak: "break-all" }}>
-      {flatQr.qr_token}
-    </code>
+            <p><strong>QR Code / Token:</strong></p>
 
-    <button
-      type="button"
-      onClick={() => void navigator.clipboard.writeText(flatQr.qr_token)}
-    >
-      Copy QR Token
-    </button>
+            <code style={{ wordBreak: "break-all" }}>
+              {flatQr.qr_token}
+            </code>
 
-    <p>Keep this QR code secure.</p>
+            <button
+              type="button"
+              onClick={() =>
+                void navigator.clipboard.writeText(flatQr.qr_token)
+              }
+            >
+              Copy QR Token
+            </button>
 
-    <button type="button" onClick={() => setFlatQr(null)}>
-      Close QR
-    </button>
-  </div>
-)}
+            <p>Keep this QR code secure.</p>
+
+            <button
+              type="button"
+              onClick={() => setFlatQr(null)}
+            >
+              Close QR
+            </button>
+          </div>
+        )}
       </section>
     );
   }
+
+
+  // -------------------- RESIDENTS PAGE --------------------
 
   function renderResidents() {
     return (
@@ -425,24 +607,33 @@ const [providerQr, setProviderQr] = useState<{
         <form onSubmit={handleResidentSubmit} className="management-form">
           <input
             value={residentName}
-            onChange={(e) => setResidentName(e.target.value)}
+            onChange={(event) => setResidentName(event.target.value)}
             placeholder="Resident full name"
             required
             maxLength={100}
           />
+
           <select
             value={residentFlat}
-            onChange={(e) => setResidentFlat(e.target.value)}
+            onChange={(event) => setResidentFlat(event.target.value)}
             required
           >
             <option value="">Select flat</option>
+
             {flats.map((flat) => (
-              <option key={flat.id} value={flat.id}>{flatLabel(flat)}</option>
+              <option key={flat.id} value={flat.id}>
+                {flatLabel(flat)}
+              </option>
             ))}
           </select>
+
           <input
             value={residentPhone}
-            onChange={(e) => setResidentPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+            onChange={(event) =>
+              setResidentPhone(
+                event.target.value.replace(/\D/g, "").slice(0, 10)
+              )
+            }
             placeholder="10-digit phone number"
             type="tel"
             inputMode="numeric"
@@ -450,6 +641,7 @@ const [providerQr, setProviderQr] = useState<{
             maxLength={10}
             required
           />
+
           <button type="submit" disabled={!flats.length}>
             <Plus size={16} /> Register Resident
           </button>
@@ -457,32 +649,53 @@ const [providerQr, setProviderQr] = useState<{
 
         {residents.map((resident) => {
           const status = residentStatus(resident.id);
+
           return (
             <div className="management-row" key={resident.id}>
               <div>
                 <strong>{resident.full_name}</strong>
+
                 <div>{resident.flat_number} · {resident.phone}</div>
-                <span className={`badge ${status === "Inside" ? "badge-green" : "badge-gray"}`}>
+
+                <span
+                  className={`badge ${
+                    status === "Inside" ? "badge-green" : "badge-gray"
+                  }`}
+                >
                   {status}
                 </span>
               </div>
+
               <div className="row-actions">
                 {status !== "Inside" ? (
-                  <button type="button" onClick={() => void movement("resident", resident.id, "Check In")}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void movement("resident", resident.id, "Check In")
+                    }
+                  >
                     <ArrowDownRight size={15} /> Check In
                   </button>
                 ) : (
-                  <button type="button" onClick={() => void movement("resident", resident.id, "Check Out")}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void movement("resident", resident.id, "Check Out")
+                    }
+                  >
                     <ArrowUpRight size={15} /> Check Out
                   </button>
                 )}
+
                 <button
                   type="button"
                   className="danger-button"
-                  onClick={() => void handleDelete(
-                    `resident ${resident.full_name} and their linked providers and movement history`,
-                    () => deleteResident(resident.id)
-                  )}
+                  onClick={() =>
+                    void handleDelete(
+                      `resident ${resident.full_name} and their linked providers and movement history`,
+                      () => deleteResident(resident.id)
+                    )
+                  }
                 >
                   <Trash2 size={15} /> Delete
                 </button>
@@ -494,6 +707,9 @@ const [providerQr, setProviderQr] = useState<{
     );
   }
 
+
+  // -------------------- SERVICE PROVIDERS PAGE --------------------
+
   function renderProviders() {
     return (
       <section className="panel" style={{ padding: 24 }}>
@@ -503,14 +719,19 @@ const [providerQr, setProviderQr] = useState<{
         <form onSubmit={handleProviderSubmit} className="management-form">
           <input
             value={providerName}
-            onChange={(e) => setProviderName(e.target.value)}
+            onChange={(event) => setProviderName(event.target.value)}
             placeholder="Provider full name"
             required
             maxLength={100}
           />
+
           <input
             value={providerPhone}
-            onChange={(e) => setProviderPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+            onChange={(event) =>
+              setProviderPhone(
+                event.target.value.replace(/\D/g, "").slice(0, 10)
+              )
+            }
             placeholder="10-digit phone number"
             type="tel"
             inputMode="numeric"
@@ -518,9 +739,10 @@ const [providerQr, setProviderQr] = useState<{
             maxLength={10}
             required
           />
+
           <select
             value={providerCategory}
-            onChange={(e) => setProviderCategory(e.target.value)}
+            onChange={(event) => setProviderCategory(event.target.value)}
           >
             <option>Maid</option>
             <option>Milk vendor</option>
@@ -530,52 +752,93 @@ const [providerQr, setProviderQr] = useState<{
             <option>Electrician / plumber</option>
             <option>Other</option>
           </select>
+
           <select
             value={providerResident}
-            onChange={(e) => setProviderResident(e.target.value)}
+            onChange={(event) => setProviderResident(event.target.value)}
             required
           >
             <option value="">Link to primary resident</option>
-            {residents.filter((r) => r.is_active).map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.full_name} · {r.flat_number}
-              </option>
-            ))}
+
+            {residents
+              .filter((resident) => resident.is_active)
+              .map((resident) => (
+                <option key={resident.id} value={resident.id}>
+                  {resident.full_name} · {resident.flat_number}
+                </option>
+              ))}
           </select>
-          <button type="submit" disabled={!residents.some((r) => r.is_active)}>
+
+          <button
+            type="submit"
+            disabled={!residents.some((resident) => resident.is_active)}
+          >
             <Plus size={16} /> Register Provider
           </button>
         </form>
 
         {providers.map((person) => {
           const status = providerStatus(person.id);
+
           return (
             <div className="management-row" key={person.id}>
               <div>
                 <strong>{person.full_name}</strong>
-                <div>{person.category} · {person.flat_number} · {person.phone}</div>
-                <div>Resident: {person.primary_resident ?? "Not linked"}</div>
-                <span className={`badge ${status === "Inside" ? "badge-green" : "badge-gray"}`}>
+
+                <div>
+                  {person.category} · {person.flat_number} · {person.phone}
+                </div>
+
+                <div>
+                  Resident: {person.primary_resident ?? "Not linked"}
+                </div>
+
+                <span
+                  className={`badge ${
+                    status === "Inside" ? "badge-green" : "badge-gray"
+                  }`}
+                >
                   {status}
                 </span>
               </div>
+
               <div className="row-actions">
+                <button
+                  type="button"
+                  onClick={() => void handleProviderQR(person)}
+                >
+                  <QrCode size={15} /> Generate QR
+                </button>
+
                 {status !== "Inside" ? (
-                  <button type="button" onClick={() => void movement("provider", person.id, "Check In")}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void movement("provider", person.id, "Check In")
+                    }
+                  >
                     <ArrowDownRight size={15} /> Check In
                   </button>
                 ) : (
-                  <button type="button" onClick={() => void movement("provider", person.id, "Check Out")}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void movement("provider", person.id, "Check Out")
+                    }
+                  >
                     <ArrowUpRight size={15} /> Check Out
                   </button>
                 )}
+
                 <button
                   type="button"
                   className="danger-button"
-                  onClick={() => void handleDelete(
-                    `service provider ${person.full_name}`,
-                    () => deleteSecondaryPerson(person.id)
-                  )}
+                  onClick={() =>
+                    void handleDelete(
+                      `service provider ${person.full_name}`,
+                      () => deleteSecondaryPerson(person.id)
+                    )
+                  }
                 >
                   <Trash2 size={15} /> Delete
                 </button>
@@ -584,53 +847,68 @@ const [providerQr, setProviderQr] = useState<{
           );
         })}
 
-       {providerQr && (
-  <div className="qr-card">
-    <h4>Service Provider QR: {providerQr.name}</h4>
+        {providerQr && (
+          <div className="qr-card">
+            <h4>Service Provider QR: {providerQr.name}</h4>
 
-    <QRCodeSVG value={providerQr.token} size={180} />
+            <QRCodeSVG value={providerQr.token} size={180} />
 
-    <p><strong>QR Code / Token:</strong></p>
+            <p><strong>QR Code / Token:</strong></p>
 
-    <code style={{ wordBreak: "break-all" }}>
-      {providerQr.token}
-    </code>
+            <code style={{ wordBreak: "break-all" }}>
+              {providerQr.token}
+            </code>
 
-    <button
-      type="button"
-      onClick={() => void navigator.clipboard.writeText(providerQr.token)}
-    >
-      Copy QR Token
-    </button>
+            <button
+              type="button"
+              onClick={() =>
+                void navigator.clipboard.writeText(providerQr.token)
+              }
+            >
+              Copy QR Token
+            </button>
 
-    <p>Save or print this QR code. Keep the token secure.</p>
+            <p>Save or print this QR code. Keep the token secure.</p>
 
-    <button
-      type="button"
-      onClick={() => setProviderQr(null)}
-    >
-      Close QR
-    </button>
-  </div>
-)}
+            <button
+              type="button"
+              onClick={() => setProviderQr(null)}
+            >
+              Close QR
+            </button>
+          </div>
+        )}
+      </section>
+    );
+  }
+
+
+  // -------------------- VISITORS PAGE --------------------
 
   function renderVisitors() {
     return (
       <section className="panel" style={{ padding: 24 }}>
         <h3>Visitor Registration</h3>
-        <p>Register temporary visitors. Registration records their check-in time.</p>
+        <p>
+          Register temporary visitors. Registration records their check-in time.
+        </p>
 
         <form onSubmit={handleVisitorSubmit} className="management-form">
           <input
             value={visitorName}
-            onChange={(e) => setVisitorName(e.target.value)}
+            onChange={(event) => setVisitorName(event.target.value)}
             placeholder="Visitor full name"
             required
             maxLength={100}
           />
+
           <input
             value={visitorPhone}
-            onChange={(e) => setVisitorPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+            onChange={(event) =>
+              setVisitorPhone(
+                event.target.value.replace(/\D/g, "").slice(0, 10)
+              )
+            }
             placeholder="10-digit phone number"
             type="tel"
             inputMode="numeric"
@@ -638,19 +916,24 @@ const [providerQr, setProviderQr] = useState<{
             maxLength={10}
             required
           />
+
           <select
             value={visitorFlat}
-            onChange={(e) => setVisitorFlat(e.target.value)}
+            onChange={(event) => setVisitorFlat(event.target.value)}
             required
           >
             <option value="">Select destination flat</option>
+
             {flats.map((flat) => (
-              <option key={flat.id} value={flat.id}>{flatLabel(flat)}</option>
+              <option key={flat.id} value={flat.id}>
+                {flatLabel(flat)}
+              </option>
             ))}
           </select>
+
           <select
             value={visitorPurpose}
-            onChange={(e) => setVisitorPurpose(e.target.value)}
+            onChange={(event) => setVisitorPurpose(event.target.value)}
           >
             <option>Personal Visit</option>
             <option>Delivery</option>
@@ -658,12 +941,14 @@ const [providerQr, setProviderQr] = useState<{
             <option>Service Provider</option>
             <option>Other</option>
           </select>
+
           <input
             value={visitorVehicle}
-            onChange={(e) => setVisitorVehicle(e.target.value)}
+            onChange={(event) => setVisitorVehicle(event.target.value)}
             placeholder="Vehicle number (if applicable)"
             maxLength={30}
           />
+
           <button type="submit" disabled={!flats.length}>
             <Plus size={16} /> Register Visitor
           </button>
@@ -672,9 +957,10 @@ const [providerQr, setProviderQr] = useState<{
         <div className="table-toolbar">
           <div className="search-box">
             <Search size={16} />
+
             <input
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(event) => setSearch(event.target.value)}
               placeholder="Search visitors..."
             />
           </div>
@@ -693,44 +979,75 @@ const [providerQr, setProviderQr] = useState<{
                 <th>ACTION</th>
               </tr>
             </thead>
+
             <tbody>
               {filteredVisitors.map((visitor) => (
                 <tr key={visitor.id}>
-                  <td>{visitor.full_name}<br />{visitor.phone}</td>
-                  <td>{visitor.building ? `${visitor.building} - ` : ""}{visitor.flat_number}</td>
+                  <td>
+                    {visitor.full_name}
+                    <br />
+                    {visitor.phone}
+                  </td>
+
+                  <td>
+                    {visitor.building ? `${visitor.building} - ` : ""}
+                    {visitor.flat_number}
+                  </td>
+
                   <td>{visitor.purpose}</td>
+
                   <td>{visitor.vehicle_number || "—"}</td>
+
                   <td>{new Date(visitor.created_at).toLocaleString()}</td>
-                  <td>{visitor.exited_at ? new Date(visitor.exited_at).toLocaleString() : "—"}</td>
+
+                  <td>
+                    {visitor.exited_at
+                      ? new Date(visitor.exited_at).toLocaleString()
+                      : "—"}
+                  </td>
+
                   <td>
                     {visitor.status === "Inside" && (
-                      <button type="button" onClick={async () => {
-                        try {
-                          await checkoutVisitor(visitor.id);
-                          await loadAll();
-                          setMessage("Visitor checked out.");
-                        } catch (error) {
-                          setMessage(error instanceof Error ? error.message : "Checkout failed.");
-                        }
-                      }}>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            await checkoutVisitor(visitor.id);
+                            await loadAll();
+                            setMessage("Visitor checked out.");
+                          } catch (error) {
+                            setMessage(
+                              error instanceof Error
+                                ? error.message
+                                : "Checkout failed."
+                            );
+                          }
+                        }}
+                      >
                         Check Out
                       </button>
                     )}
+
                     <button
                       type="button"
                       className="danger-button"
-                      onClick={() => void handleDelete(
-                        `visitor ${visitor.full_name}`,
-                        () => deleteVisitor(visitor.id)
-                      )}
+                      onClick={() =>
+                        void handleDelete(
+                          `visitor ${visitor.full_name}`,
+                          () => deleteVisitor(visitor.id)
+                        )
+                      }
                     >
                       <Trash2 size={14} /> Delete
                     </button>
                   </td>
                 </tr>
               ))}
+
               {filteredVisitors.length === 0 && (
-                <tr><td colSpan={7}>No visitor records found.</td></tr>
+                <tr>
+                  <td colSpan={7}>No visitor records found.</td>
+                </tr>
               )}
             </tbody>
           </table>
@@ -739,6 +1056,9 @@ const [providerQr, setProviderQr] = useState<{
     );
   }
 
+
+  // -------------------- ACCESS LOGS PAGE --------------------
+
   function renderAccessLogs() {
     const residentEvents = residentStatuses;
     const providerEvents = providerStatuses;
@@ -746,23 +1066,40 @@ const [providerQr, setProviderQr] = useState<{
     return (
       <section className="panel" style={{ padding: 24 }}>
         <h3>Access Logs</h3>
-        <p>Current movement status for residents and service providers, plus visitor history.</p>
+
+        <p>
+          Current movement status for residents and service providers,
+          plus visitor history.
+        </p>
 
         <h4>Recent visitor activity</h4>
+
         <div className="table-scroll">
           <table>
             <thead>
-              <tr><th>VISITOR</th><th>FLAT</th><th>STATUS</th><th>ARRIVAL</th><th>EXIT</th><th>VEHICLE</th></tr>
+              <tr>
+                <th>VISITOR</th>
+                <th>FLAT</th>
+                <th>STATUS</th>
+                <th>ARRIVAL</th>
+                <th>EXIT</th>
+                <th>VEHICLE</th>
+              </tr>
             </thead>
+
             <tbody>
-              {visitors.map((v) => (
-                <tr key={v.id}>
-                  <td>{v.full_name}</td>
-                  <td>{v.flat_number}</td>
-                  <td>{v.status}</td>
-                  <td>{new Date(v.created_at).toLocaleString()}</td>
-                  <td>{v.exited_at ? new Date(v.exited_at).toLocaleString() : "—"}</td>
-                  <td>{v.vehicle_number || "—"}</td>
+              {visitors.map((visitor) => (
+                <tr key={visitor.id}>
+                  <td>{visitor.full_name}</td>
+                  <td>{visitor.flat_number}</td>
+                  <td>{visitor.status}</td>
+                  <td>{new Date(visitor.created_at).toLocaleString()}</td>
+                  <td>
+                    {visitor.exited_at
+                      ? new Date(visitor.exited_at).toLocaleString()
+                      : "—"}
+                  </td>
+                  <td>{visitor.vehicle_number || "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -770,25 +1107,46 @@ const [providerQr, setProviderQr] = useState<{
         </div>
 
         <h4>Resident current status</h4>
-        {residentEvents.map((r) => (
-          <div className="management-row" key={r.resident_id}>
-            <strong>{r.full_name}</strong>
-            <span>{r.flat_number} · {r.status}</span>
-            <span>{r.created_at ? new Date(r.created_at).toLocaleString() : "No movement yet"}</span>
+
+        {residentEvents.map((resident) => (
+          <div className="management-row" key={resident.resident_id}>
+            <strong>{resident.full_name}</strong>
+
+            <span>
+              {resident.flat_number} · {resident.status}
+            </span>
+
+            <span>
+              {resident.created_at
+                ? new Date(resident.created_at).toLocaleString()
+                : "No movement yet"}
+            </span>
           </div>
         ))}
 
         <h4>Service provider current status</h4>
-        {providerEvents.map((p) => (
-          <div className="management-row" key={p.person_id}>
-            <strong>{p.full_name}</strong>
-            <span>{p.category} · {p.flat_number} · {p.status}</span>
-            <span>{p.created_at ? new Date(p.created_at).toLocaleString() : "No movement yet"}</span>
+
+        {providerEvents.map((provider) => (
+          <div className="management-row" key={provider.person_id}>
+            <strong>{provider.full_name}</strong>
+
+            <span>
+              {provider.category} · {provider.flat_number} · {provider.status}
+            </span>
+
+            <span>
+              {provider.created_at
+                ? new Date(provider.created_at).toLocaleString()
+                : "No movement yet"}
+            </span>
           </div>
         ))}
       </section>
     );
   }
+
+
+  // -------------------- DASHBOARD --------------------
 
   function renderDashboard() {
     return (
@@ -809,12 +1167,23 @@ const [providerQr, setProviderQr] = useState<{
           ))}
         </section>
 
-        <div style={{ marginTop: 24 }}>{renderVisitors()}</div>
-        <div style={{ marginTop: 24 }}>{renderFlats()}</div>
-        <div style={{ marginTop: 24 }}>{renderResidents()}</div>
+        <div style={{ marginTop: 24 }}>
+          {renderVisitors()}
+        </div>
+
+        <div style={{ marginTop: 24 }}>
+          {renderFlats()}
+        </div>
+
+        <div style={{ marginTop: 24 }}>
+          {renderResidents()}
+        </div>
       </>
     );
   }
+
+
+  // -------------------- MAIN LAYOUT --------------------
 
   return (
     <div className="app-shell">
@@ -828,24 +1197,35 @@ const [providerQr, setProviderQr] = useState<{
 
       <aside className={`sidebar ${mobileMenu ? "sidebar-open" : ""}`}>
         <div className="brand">
-          <div className="brand-mark"><ShieldCheck size={25} /></div>
+          <div className="brand-mark">
+            <ShieldCheck size={25} />
+          </div>
+
           <div>
             <h1>GatePass</h1>
             <span>COMMUNITY MANAGEMENT</span>
           </div>
-          <button className="icon-button mobile-close" onClick={() => setMobileMenu(false)}>
+
+          <button
+            className="icon-button mobile-close"
+            onClick={() => setMobileMenu(false)}
+          >
             <X size={20} />
           </button>
         </div>
 
         <div className="workspace-label">WORKSPACE</div>
+
         <nav className="navigation">
           {navigation.map((item) => {
             const Icon = item.icon;
+
             return (
               <button
                 key={item.label}
-                className={`nav-item ${page === item.label ? "nav-active" : ""}`}
+                className={`nav-item ${
+                  page === item.label ? "nav-active" : ""
+                }`}
                 onClick={() => {
                   setPage(item.label);
                   setMobileMenu(false);
@@ -860,58 +1240,83 @@ const [providerQr, setProviderQr] = useState<{
 
         <div className="sidebar-bottom">
           <div className="security-card">
-            <div className="security-icon"><ShieldCheck size={20} /></div>
+            <div className="security-icon">
+              <ShieldCheck size={20} />
+            </div>
+
             <strong>Security overview</strong>
+
             <p>Access monitoring dashboard</p>
+
             <div className="security-status">
-              <span className="status-dot" /> Database connected via API
+              <span className="status-dot" />
+              Database connected via API
             </div>
           </div>
+
           <div className="profile">
             <div className="avatar admin-avatar">AD</div>
+
             <div className="profile-info">
               <strong>Society Admin</strong>
               <span>Administrator</span>
             </div>
+
             <Settings size={18} />
           </div>
         </div>
       </aside>
 
+
       <main className="main-area">
         <header className="topbar">
-          <button className="icon-button mobile-menu-button" onClick={() => setMobileMenu(true)}>
+          <button
+            className="icon-button mobile-menu-button"
+            onClick={() => setMobileMenu(true)}
+          >
             <Menu size={22} />
           </button>
+
           <div className="breadcrumb">
             <span>Workspace</span>
             <span className="breadcrumb-divider">/</span>
             <strong>{page}</strong>
           </div>
+
           <div className="topbar-right">
             <div className="system-status">
-              <span className="status-dot" /> Live API
+              <span className="status-dot" />
+              Live API
             </div>
           </div>
         </header>
+
 
         <div className="page-content">
           <div className="welcome-row">
             <div>
               <div className="eyebrow">SOCIETY OPERATIONS</div>
               <h2>{page}</h2>
-              <p className="page-description">Manage your community's access records.</p>
+              <p className="page-description">
+                Manage your community's access records.
+              </p>
             </div>
-            <button className="primary-button" onClick={() => void loadAll()}>
+
+            <button
+              className="primary-button"
+              onClick={() => void loadAll()}
+            >
               Refresh Data
             </button>
           </div>
+
 
           {message && (
             <div className="form-notice" style={{ marginBottom: 16 }}>
               {message}
             </div>
           )}
+
 
           {page === "Dashboard" && renderDashboard()}
           {page === "Flats" && renderFlats()}
@@ -920,16 +1325,31 @@ const [providerQr, setProviderQr] = useState<{
           {page === "Visitors" && renderVisitors()}
           {page === "Access Logs" && renderAccessLogs()}
 
+
           <section className="panel" style={{ padding: 24, marginTop: 24 }}>
             <h3>Gate QR Scanner</h3>
-            <p>Scan a flat QR or service-provider QR to verify it.</p>
-            <button type="button" onClick={() => {
-              setScanResult("");
-              setScanEnabled((current) => !current);
-            }}>
+
+            <p>
+              Scan a flat QR or service-provider QR to verify it.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => {
+                setScanResult("");
+                setScanEnabled((current) => !current);
+              }}
+            >
               {scanEnabled ? "Stop Scanner" : "Start Scanner"}
             </button>
-            {scanEnabled && <div id="gatepass-scanner" style={{ maxWidth: 420, marginTop: 16 }} />}
+
+            {scanEnabled && (
+              <div
+                id="gatepass-scanner"
+                style={{ maxWidth: 420, marginTop: 16 }}
+              />
+            )}
+
             {scanResult && <p>{scanResult}</p>}
           </section>
         </div>

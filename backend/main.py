@@ -160,19 +160,19 @@ class FlatCreate(BaseModel):
 class ResidentCreate(BaseModel):
     full_name: str = Field(min_length=1)
     flat_id: int
-    phone: str = ""
+    phone: str = Field(pattern=r"^[0-9]{10}$")
 
 
 class VisitorCreate(BaseModel):
     full_name: str = Field(min_length=1)
     flat_id: int
-    phone: str = Field(min_length=1)
+    phone: str = Field(pattern=r"^[0-9]{10}$")
     purpose: str = Field(min_length=1)
 
 
 class SecondaryPersonCreate(BaseModel):
     full_name: str = Field(min_length=1)
-    phone: str = Field(min_length=1)
+    phone: str = Field(pattern=r"^[0-9]{10}$")
     category: str = Field(min_length=1)
     resident_id: Optional[int] = None
     flat_id: int
@@ -185,8 +185,6 @@ class QRValidateRequest(BaseModel):
 class ResidentMovementCreate(BaseModel):
     resident_id: int
     action: Literal["Check In", "Check Out"]
-
-
 # --------------------------------------------------
 # BASIC ROUTES AND HEALTH CHECKS
 # --------------------------------------------------

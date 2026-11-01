@@ -365,7 +365,7 @@ export default function App() {
             <option value="">Select flat</option>
             {flats.map((flat) => <option key={flat.id} value={flat.id}>{flat.flat_number}{flat.building ? ` — ${flat.building}` : ""}</option>)}
           </select>
-          <input value={residentPhone} onChange={(event) => setResidentPhone(event.target.value)} placeholder="Phone (optional)" maxLength={20} />
+          <input value={residentPhone} onChange={(event) => setResidentPhone(event.target.value)} placeholder="Phone (mandatory)" maxLength={20} />
           <button type="submit" disabled={flats.length === 0}>Register Resident</button>
         </form>
         {flats.length === 0 && !flatsLoading && <p>Register a flat first before adding residents.</p>}

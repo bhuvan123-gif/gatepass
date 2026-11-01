@@ -65,8 +65,12 @@ export default function App() {
   const [visitorPurpose, setVisitorPurpose] = useState("Personal Visit");
   const [visitorVehicle, setVisitorVehicle] = useState("");
 
-  const [qrToken, setQrToken] = useState("");
-  const [flatQr, setFlatQr] = useState<FlatQRCreated | null>(null);
+const [qrToken, setQrToken] = useState("");
+const [flatQr, setFlatQr] = useState<FlatQRCreated | null>(null);
+const [providerQr, setProviderQr] = useState<{
+  name: string;
+  token: string;
+} | null>(null);
   const [scanEnabled, setScanEnabled] = useState(false);
   const [scanResult, setScanResult] = useState("");
 
@@ -228,7 +232,10 @@ export default function App() {
         flat_id: resident.flat_id,
       });
 
-      setQrToken(created.qr_token);
+     setProviderQr({
+  name: created.full_name,
+  token: created.qr_token,
+});
       setProviderName("");
       setProviderPhone("");
       setProviderResident("");
@@ -381,12 +388,30 @@ export default function App() {
         ))}
 
         {flatQr && (
-          <div className="qr-card">
-            <h4>Flat QR: {flatLabel(flatQr.flat)}</h4>
-            <QRCodeSVG value={flatQr.qr_token} size={180} />
-            <p>Keep this QR code secure.</p>
-          </div>
-        )}
+  <div className="qr-card">
+    <h4>Flat QR: {flatLabel(flatQr.flat)}</h4>
+
+    <QRCodeSVG value={flatQr.qr_token} size={180} />
+
+    <p><strong>QR Code / Token:</strong></p>
+    <code style={{ wordBreak: "break-all" }}>
+      {flatQr.qr_token}
+    </code>
+
+    <button
+      type="button"
+      onClick={() => void navigator.clipboard.writeText(flatQr.qr_token)}
+    >
+      Copy QR Token
+    </button>
+
+    <p>Keep this QR code secure.</p>
+
+    <button type="button" onClick={() => setFlatQr(null)}>
+      Close QR
+    </button>
+  </div>
+)}
       </section>
     );
   }
@@ -559,17 +584,35 @@ export default function App() {
           );
         })}
 
-        {qrToken && (
-          <div className="qr-card">
-            <h4>New Service Provider QR</h4>
-            <QRCodeSVG value={qrToken} size={180} />
-            <p>Save or print this QR code. It will not be shown again after leaving this page.</p>
-            <button type="button" onClick={() => setQrToken("")}>Close QR</button>
-          </div>
-        )}
-      </section>
-    );
-  }
+       {providerQr && (
+  <div className="qr-card">
+    <h4>Service Provider QR: {providerQr.name}</h4>
+
+    <QRCodeSVG value={providerQr.token} size={180} />
+
+    <p><strong>QR Code / Token:</strong></p>
+
+    <code style={{ wordBreak: "break-all" }}>
+      {providerQr.token}
+    </code>
+
+    <button
+      type="button"
+      onClick={() => void navigator.clipboard.writeText(providerQr.token)}
+    >
+      Copy QR Token
+    </button>
+
+    <p>Save or print this QR code. Keep the token secure.</p>
+
+    <button
+      type="button"
+      onClick={() => setProviderQr(null)}
+    >
+      Close QR
+    </button>
+  </div>
+)}
 
   function renderVisitors() {
     return (

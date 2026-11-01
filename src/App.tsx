@@ -678,27 +678,25 @@ export default function App() {
               </p>
             </div>
 
-            <button
-              className="primary-button"
-              onClick={() => {
-                if (activePage === "Visitors" || activePage === "Dashboard") {
-                  setShowVisitorForm(true);
-                } else if (activePage === "Residents") {
-                  document
-                    .getElementById("resident-management")
-                    ?.scrollIntoView({ behavior: "smooth" });
-                } else {
-                  alert(
-                    `${activePage} management will be connected to the backend next.`
-                  );
-                }
-              }}
-            >
-              <Plus size={18} />
-              {activePage === "Visitors" || activePage === "Dashboard"
-                ? "Register Visitor"
-                : "Quick Action"}
-            </button>
+           <button
+  type="button"
+  className="primary-button"
+  style={{
+    position: "relative",
+    zIndex: 10,
+    pointerEvents: "auto",
+    cursor: "pointer",
+  }}
+  onClick={() => {
+    console.log("Register Visitor clicked");
+    setShowVisitorForm(true);
+  }}
+>
+  <Plus size={18} />
+  {activePage === "Dashboard" || activePage === "Visitors"
+    ? "Register Visitor"
+    : "Quick Action"}
+</button>
           </div>
 
           {activePage === "Dashboard" && (

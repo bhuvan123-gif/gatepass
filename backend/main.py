@@ -67,6 +67,10 @@ def init_database():
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
         """)
+        conn.execute("""
+            ALTER TABLE flats
+            ADD COLUMN IF NOT EXISTS qr_token_hash TEXT UNIQUE
+        """)
 
         conn.execute("""
             CREATE TABLE IF NOT EXISTS visitors (
@@ -301,6 +305,41 @@ def create_visitor(data: VisitorCreate):
     except Exception:
         logger.exception("POST /visitors failed")
         raise HTTPException(status_code=500, detail="Could not register visitor")
+@app.post("/flats/{flat_id}/qr")
+def generate_flat_qr(flat_id: int):
+    token = secrets.token_urlsafe(32)
+    token_hash = hash_qr_token(token)
+
+    try:
+        with db_connection() as conn:
+            flat = conn.execute("""
+                UPDATE flats
+                SET qr_token_hash = %s
+                WHERE id = %s
+                RETURNING id, flat_number, building
+            """, (token_hash, flat_id)).fetchone()
+
+            if not flat:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Flat not found"
+                )
+
+        return {
+            "valid": True,
+            "type": "flat",
+            "flat": flat,
+            "qr_token": token
+        }
+
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Flat QR generation failed")
+        raise HTTPException(
+            status_code=500,
+            detail="Could not generate flat QR"
+        )
 
 
 @app.patch("/visitors/{visitor_id}/checkout")
@@ -432,12 +471,31 @@ def validate_qr(data: dict):
     token = data.get("token", "")
 
     if not isinstance(token, str) or not token:
-        raise HTTPException(status_code=400, detail="QR token required")
+        raise HTTPException(
+            status_code=400,
+            detail="QR token required"
+        )
 
     token_hash = hash_qr_token(token)
 
     try:
         with db_connection() as conn:
+
+            # Check flat QR first
+            flat = conn.execute("""
+                SELECT id, flat_number, building
+                FROM flats
+                WHERE qr_token_hash = %s
+            """, (token_hash,)).fetchone()
+
+            if flat:
+                return {
+                    "valid": True,
+                    "type": "flat",
+                    "flat": flat
+                }
+
+            # Otherwise check secondary-person QR
             person = conn.execute("""
                 SELECT
                     s.id,
@@ -460,6 +518,7 @@ def validate_qr(data: dict):
 
         return {
             "valid": True,
+            "type": "secondary",
             "person": person
         }
 
@@ -471,9 +530,7 @@ def validate_qr(data: dict):
             status_code=500,
             detail="Could not validate QR"
         )
-
-
-@app.patch("/secondary-people/{person_id}/deactivate")
+        @app.patch("/secondary-people/{person_id}/deactivate")
 def deactivate_secondary_person(person_id: int):
     try:
         with db_connection() as conn:

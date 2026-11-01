@@ -877,3 +877,20 @@ tbody tr:hover {
   margin: 5px 0 0;
   color: #7d88a9;
 }
+.modal-backdrop {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 99999 !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  padding: 20px;
+}
+
+.visitor-modal {
+  position: relative;
+  z-index: 100000 !important;
+  pointer-events: auto !important;
+  background: white;
+}

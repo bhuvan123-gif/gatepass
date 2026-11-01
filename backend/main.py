@@ -78,7 +78,7 @@ def init_database():
                 exited_at TIMESTAMPTZ
             )
         """)
-                conn.execute("""
+         conn.execute("""
             CREATE TABLE IF NOT EXISTS secondary_people (
                 id SERIAL PRIMARY KEY,
                 full_name TEXT NOT NULL,
@@ -90,8 +90,7 @@ def init_database():
                 active BOOLEAN NOT NULL DEFAULT TRUE,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
-        """)
-        conn.commit()
+        """)        conn.commit()
 
 
 @app.on_event("startup")

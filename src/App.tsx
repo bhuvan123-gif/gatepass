@@ -1,3 +1,4 @@
+
 import { useCallback, useEffect, useState } from "react";
 import {
   getVisitorAccessLogs,
@@ -70,6 +71,14 @@ type Page =
   | "Access Logs"
   | "Settings";
 
+function cleanPhone(value: string) {
+  return value.replace(/\D/g, "").slice(0, 10);
+}
+
+function isValidPhone(value: string) {
+  return /^[0-9]{10}$/.test(value);
+}
+
 export default function App() {
   const [activePage, setActivePage] = useState<Page>("Dashboard");
   const [search, setSearch] = useState("");
@@ -86,7 +95,6 @@ export default function App() {
   const [building, setBuilding] = useState("");
   const [flatMessage, setFlatMessage] = useState("");
 
-  // Used for generating a flat QR without displaying the flat list.
   const [flatQRSelection, setFlatQRSelection] = useState("");
 
   const [residents, setResidents] = useState<Resident[]>([]);
@@ -137,7 +145,6 @@ export default function App() {
   const [qrScanMessage, setQrScanMessage] = useState("");
   const [qrScanBusy, setQrScanBusy] = useState(false);
 
-  // Manual QR entry
   const [manualQRToken, setManualQRToken] = useState("");
 
   const [selectedMovementResident, setSelectedMovementResident] = useState("");
@@ -316,14 +323,7 @@ export default function App() {
 
     if (!manualQRToken.trim() || qrScanBusy) return;
 
-    const token = manualQRToken.trim();
-
-    await verifyQRCode(token);
-
-    // Clear the input only after successful verification.
-    // If verification fails, the user can edit the token and retry.
-    // The result is set by verifyQRCode().
-    setManualQRToken((current) => current);
+    await verifyQRCode(manualQRToken.trim());
   }
 
   // ---------------- QR SCANNER ----------------
@@ -435,6 +435,11 @@ export default function App() {
 
     try {
       const result = await generateFlatQR(flat.id);
+
+      if (!result.qr_token) {
+        throw new Error("The server did not return a QR token.");
+      }
+
       setFlatQR(result);
       setFlatQRMessage(`QR generated successfully for ${flat.flat_number}.`);
     } catch (error) {
@@ -443,6 +448,15 @@ export default function App() {
       );
     } finally {
       setFlatQRLoading(null);
+    }
+  }
+
+  async function copyText(value: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      alert(`${label} copied successfully.`);
+    } catch {
+      alert("Could not copy automatically. Please select and copy the text manually.");
     }
   }
 
@@ -456,13 +470,18 @@ export default function App() {
       return;
     }
 
+    if (!isValidPhone(residentPhone)) {
+      setResidentMessage("Enter a valid 10-digit mobile number.");
+      return;
+    }
+
     setResidentMessage("Registering resident...");
 
     try {
       const created = await createResident({
         full_name: residentName.trim(),
         flat_id: Number(residentFlatId),
-        phone: residentPhone.trim(),
+        phone: residentPhone,
       });
 
       setResidents((current) => [...current, created]);
@@ -540,6 +559,11 @@ export default function App() {
 
     if (!fullName || !phone || !purpose || !Number.isInteger(flatId)) {
       alert("Please complete all visitor details.");
+      return;
+    }
+
+    if (!isValidPhone(phone)) {
+      alert("Enter a valid 10-digit visitor mobile number.");
       return;
     }
 
@@ -652,6 +676,11 @@ export default function App() {
 
     const flatId = Number(secondaryFlatId);
 
+    if (!isValidPhone(secondaryPhone)) {
+      setSecondaryMessage("Enter a valid 10-digit service-provider mobile number.");
+      return;
+    }
+
     if (!Number.isInteger(flatId) || !flats.some((flat) => flat.id === flatId)) {
       setSecondaryMessage("Please select a valid flat.");
       return;
@@ -672,7 +701,7 @@ export default function App() {
     try {
       const created = await createSecondaryPerson({
         full_name: secondaryName.trim(),
-        phone: secondaryPhone.trim(),
+        phone: secondaryPhone,
         category: secondaryCategory,
         flat_id: flatId,
         resident_id: resident ? resident.id : null,
@@ -1087,8 +1116,6 @@ export default function App() {
         {flatsLoading && <p>Loading flat options...</p>}
         {flatsError && <p role="alert">{flatsError}</p>}
 
-        {/* Flat records are deliberately not displayed here. */}
-
         <div
           style={{
             marginTop: 24,
@@ -1122,9 +1149,7 @@ export default function App() {
 
             <button
               type="button"
-              disabled={
-                !selectedFlat || flatQRLoading !== null
-              }
+              disabled={!selectedFlat || flatQRLoading !== null}
               onClick={() => {
                 if (selectedFlat) {
                   void handleGenerateFlatQR(selectedFlat);
@@ -1154,6 +1179,8 @@ export default function App() {
               alignItems: "center",
               gap: 12,
               maxWidth: "100%",
+              width: 340,
+              boxSizing: "border-box",
             }}
           >
             <h3>Flat QR Code</h3>
@@ -1170,6 +1197,33 @@ export default function App() {
               level="H"
               includeMargin
             />
+
+            <div style={{ width: "100%", textAlign: "center" }}>
+              <strong>Resident QR Token</strong>
+
+              <p
+                style={{
+                  padding: 12,
+                  background: "#f3f4f6",
+                  borderRadius: 8,
+                  fontSize: 12,
+                  overflowWrap: "anywhere",
+                  userSelect: "all",
+                  lineHeight: 1.6,
+                }}
+              >
+                {flatQR.qr_token}
+              </p>
+
+              <button
+                type="button"
+                onClick={() =>
+                  void copyText(flatQR.qr_token, "QR token")
+                }
+              >
+                Copy QR Token
+              </button>
+            </div>
 
             <button
               type="button"
@@ -1252,11 +1306,17 @@ export default function App() {
             </select>
 
             <input
+              type="tel"
+              inputMode="numeric"
               value={residentPhone}
-              onChange={(event) => setResidentPhone(event.target.value)}
-              placeholder="Phone number"
+              onChange={(event) =>
+                setResidentPhone(cleanPhone(event.target.value))
+              }
+              placeholder="10-digit phone number"
               required
-              maxLength={20}
+              maxLength={10}
+              pattern="[0-9]{10}"
+              title="Enter exactly 10 digits"
             />
 
             <button type="submit" disabled={flats.length === 0}>
@@ -1447,10 +1507,17 @@ export default function App() {
           />
 
           <input
+            type="tel"
+            inputMode="numeric"
             value={secondaryPhone}
-            onChange={(event) => setSecondaryPhone(event.target.value)}
-            placeholder="Phone number"
-            maxLength={20}
+            onChange={(event) =>
+              setSecondaryPhone(cleanPhone(event.target.value))
+            }
+            placeholder="10-digit phone number"
+            required
+            maxLength={10}
+            pattern="[0-9]{10}"
+            title="Enter exactly 10 digits"
           />
 
           <select
@@ -1534,6 +1601,30 @@ export default function App() {
                 includeMargin
               />
             </div>
+
+            <p>
+              <strong>Provider QR Token</strong>
+            </p>
+
+            <p
+              style={{
+                maxWidth: 350,
+                overflowWrap: "anywhere",
+                fontSize: 12,
+                userSelect: "all",
+              }}
+            >
+              {newProviderQR}
+            </p>
+
+            <button
+              type="button"
+              onClick={() =>
+                void copyText(newProviderQR, "Provider QR token")
+              }
+            >
+              Copy Provider QR Token
+            </button>
 
             <button
               type="button"
@@ -1783,8 +1874,6 @@ export default function App() {
           {movements.length} resident movement records
         </div>
 
-        {/* VISITOR ACCESS LOGS */}
-
         <div style={{ marginTop: 32 }}>
           <div className="panel-heading">
             <div>
@@ -1901,8 +1990,6 @@ export default function App() {
             {visitorAccessLogs.length} visitor access records
           </div>
         </div>
-
-        {/* CURRENT RESIDENT STATUS */}
 
         <div style={{ marginTop: 32 }}>
           <div className="panel-heading">
@@ -2139,7 +2226,6 @@ export default function App() {
           </article>
         </section>
 
-        {/* Flat registration is available, but registered flat rows are hidden. */}
         <div style={{ marginTop: 24 }}>{renderFlats()}</div>
         <div style={{ marginTop: 24 }}>{renderResidents()}</div>
       </>
@@ -2659,9 +2745,16 @@ export default function App() {
                 name="phone"
                 required
                 type="tel"
-                inputMode="tel"
-                maxLength={20}
-                placeholder="Enter phone number"
+                inputMode="numeric"
+                maxLength={10}
+                pattern="[0-9]{10}"
+                title="Enter exactly 10 digits"
+                onChange={(event) => {
+                  event.currentTarget.value = cleanPhone(
+                    event.currentTarget.value
+                  );
+                }}
+                placeholder="Enter 10-digit phone number"
               />
             </label>
 

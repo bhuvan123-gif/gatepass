@@ -1,9 +1,9 @@
+
 import secrets
 import hashlib
 import os
 import logging
 from contextlib import contextmanager
-from datetime import datetime
 from typing import Optional
 
 import psycopg
@@ -17,8 +17,6 @@ logger = logging.getLogger("gatepass")
 
 app = FastAPI(title="GatePass API", version="1.0.0")
 
-# Allow the deployed frontend to call this API.
-# For production, replace "*" with your exact frontend origin.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -30,10 +28,13 @@ app.add_middleware(
 
 def get_database_url():
     url = os.getenv("DATABASE_URL")
+
     if not url:
         raise RuntimeError("DATABASE_URL is not configured in Render.")
+
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
+
     return url
 
 
@@ -47,8 +48,13 @@ def db_connection():
         yield conn
 
 
+def hash_qr_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
 def init_database():
     with db_connection() as conn:
+
         conn.execute("""
             CREATE TABLE IF NOT EXISTS flats (
                 id SERIAL PRIMARY KEY,
@@ -56,6 +62,12 @@ def init_database():
                 building TEXT,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
+        """)
+
+        # Add flat QR token hash to existing databases.
+        conn.execute("""
+            ALTER TABLE flats
+            ADD COLUMN IF NOT EXISTS qr_token_hash TEXT UNIQUE
         """)
 
         conn.execute("""
@@ -66,10 +78,6 @@ def init_database():
                 phone TEXT,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
             )
-        """)
-        conn.execute("""
-            ALTER TABLE flats
-            ADD COLUMN IF NOT EXISTS qr_token_hash TEXT UNIQUE
         """)
 
         conn.execute("""
@@ -109,9 +117,12 @@ def startup():
         logger.info("GatePass database initialized successfully.")
     except Exception:
         logger.exception("GatePass database initialization failed.")
-        # Keep startup errors visible in Render logs.
         raise
 
+
+# -------------------------
+# REQUEST MODELS
+# -------------------------
 
 class FlatCreate(BaseModel):
     flat_number: str = Field(min_length=1, max_length=50)
@@ -123,12 +134,14 @@ class ResidentCreate(BaseModel):
     flat_id: int
     phone: str = Field(default="", max_length=30)
 
+
 class SecondaryPersonCreate(BaseModel):
     full_name: str = Field(min_length=1, max_length=150)
     phone: str = Field(default="", max_length=30)
     category: str = Field(min_length=1, max_length=50)
     resident_id: int
     flat_id: int
+
 
 class VisitorCreate(BaseModel):
     full_name: str = Field(min_length=1, max_length=150)
@@ -137,9 +150,16 @@ class VisitorCreate(BaseModel):
     purpose: str = Field(min_length=1, max_length=300)
 
 
+# -------------------------
+# GENERAL ROUTES
+# -------------------------
+
 @app.get("/")
 def root():
-    return {"message": "GatePass API is running", "docs": "/docs"}
+    return {
+        "message": "GatePass API is running",
+        "docs": "/docs"
+    }
 
 
 @app.get("/health")
@@ -147,14 +167,24 @@ def health():
     try:
         with db_connection() as conn:
             conn.execute("SELECT 1")
-        return {"status": "ok", "database": "connected"}
+
+        return {
+            "status": "ok",
+            "database": "connected"
+        }
+
     except Exception:
         logger.exception("Health check database failure.")
+
         raise HTTPException(
             status_code=503,
-            detail="Database connection failed",
+            detail="Database connection failed"
         )
 
+
+# -------------------------
+# FLATS
+# -------------------------
 
 @app.get("/flats")
 def get_flats():
@@ -165,10 +195,16 @@ def get_flats():
                 FROM flats
                 ORDER BY building NULLS FIRST, flat_number
             """).fetchall()
+
         return rows
+
     except Exception:
         logger.exception("GET /flats failed")
-        raise HTTPException(status_code=500, detail="Could not load flats")
+
+        raise HTTPException(
+            status_code=500,
+            detail="Could not load flats"
+        )
 
 
 @app.post("/flats", status_code=201)
@@ -177,7 +213,10 @@ def create_flat(data: FlatCreate):
     building = data.building.strip() or None
 
     if not flat_number:
-        raise HTTPException(status_code=422, detail="Flat number is required")
+        raise HTTPException(
+            status_code=422,
+            detail="Flat number is required"
+        )
 
     try:
         with db_connection() as conn:
@@ -186,125 +225,24 @@ def create_flat(data: FlatCreate):
                 VALUES (%s, %s)
                 RETURNING id, flat_number, building, created_at
             """, (flat_number, building)).fetchone()
+
         return row
+
     except psycopg.errors.UniqueViolation:
-        raise HTTPException(status_code=409, detail="This flat already exists")
+        raise HTTPException(
+            status_code=409,
+            detail="This flat already exists"
+        )
+
     except Exception:
         logger.exception("POST /flats failed")
-        raise HTTPException(status_code=500, detail="Could not create flat")
+
+        raise HTTPException(
+            status_code=500,
+            detail="Could not create flat"
+        )
 
 
-@app.get("/residents")
-def get_residents():
-    try:
-        with db_connection() as conn:
-            rows = conn.execute("""
-                SELECT
-                    r.id, r.full_name, r.flat_id, r.phone, r.created_at,
-                    f.flat_number, f.building
-                FROM residents r
-                JOIN flats f ON f.id = r.flat_id
-                ORDER BY r.full_name
-            """).fetchall()
-        return rows
-    except Exception:
-        logger.exception("GET /residents failed")
-        raise HTTPException(status_code=500, detail="Could not load residents")
-
-
-@app.post("/residents", status_code=201)
-def create_resident(data: ResidentCreate):
-    try:
-        with db_connection() as conn:
-            row = conn.execute("""
-                INSERT INTO residents (full_name, flat_id, phone)
-                VALUES (%s, %s, %s)
-                RETURNING id, full_name, flat_id, phone, created_at
-            """, (
-                data.full_name.strip(),
-                data.flat_id,
-                data.phone.strip() or None,
-            )).fetchone()
-
-            flat = conn.execute("""
-                SELECT flat_number, building FROM flats WHERE id = %s
-            """, (data.flat_id,)).fetchone()
-
-            if not flat:
-                raise HTTPException(status_code=404, detail="Flat not found")
-
-            row["flat_number"] = flat["flat_number"]
-            row["building"] = flat["building"]
-        return row
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("POST /residents failed")
-        raise HTTPException(status_code=500, detail="Could not create resident")
-
-
-@app.get("/visitors")
-def get_visitors():
-    try:
-        with db_connection() as conn:
-            rows = conn.execute("""
-                SELECT
-                    v.id,
-                    v.full_name,
-                    v.flat_id,
-                    f.flat_number,
-                    f.building,
-                    v.phone,
-                    v.purpose,
-                    v.status,
-                    v.created_at,
-                    v.exited_at
-                FROM visitors v
-                JOIN flats f ON f.id = v.flat_id
-                ORDER BY v.created_at DESC, v.id DESC
-            """).fetchall()
-        return rows
-    except Exception:
-        logger.exception("GET /visitors failed")
-        raise HTTPException(status_code=500, detail="Could not load visitors")
-
-
-@app.post("/visitors", status_code=201)
-def create_visitor(data: VisitorCreate):
-    try:
-        with db_connection() as conn:
-            flat = conn.execute("""
-                SELECT id FROM flats WHERE id = %s
-            """, (data.flat_id,)).fetchone()
-
-            if not flat:
-                raise HTTPException(status_code=404, detail="Flat not found")
-
-            row = conn.execute("""
-                INSERT INTO visitors
-                    (full_name, flat_id, phone, purpose, status)
-                VALUES (%s, %s, %s, %s, 'Inside')
-                RETURNING id, full_name, flat_id, phone, purpose,
-                          status, created_at, exited_at
-            """, (
-                data.full_name.strip(),
-                data.flat_id,
-                data.phone.strip(),
-                data.purpose.strip(),
-            )).fetchone()
-
-            flat_details = conn.execute("""
-                SELECT flat_number, building FROM flats WHERE id = %s
-            """, (data.flat_id,)).fetchone()
-
-            row["flat_number"] = flat_details["flat_number"]
-            row["building"] = flat_details["building"]
-        return row
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("POST /visitors failed")
-        raise HTTPException(status_code=500, detail="Could not register visitor")
 @app.post("/flats/{flat_id}/qr")
 def generate_flat_qr(flat_id: int):
     token = secrets.token_urlsafe(32)
@@ -334,11 +272,185 @@ def generate_flat_qr(flat_id: int):
 
     except HTTPException:
         raise
+
     except Exception:
         logger.exception("Flat QR generation failed")
+
         raise HTTPException(
             status_code=500,
             detail="Could not generate flat QR"
+        )
+
+
+# -------------------------
+# RESIDENTS
+# -------------------------
+
+@app.get("/residents")
+def get_residents():
+    try:
+        with db_connection() as conn:
+            rows = conn.execute("""
+                SELECT
+                    r.id,
+                    r.full_name,
+                    r.flat_id,
+                    r.phone,
+                    r.created_at,
+                    f.flat_number,
+                    f.building
+                FROM residents r
+                JOIN flats f ON f.id = r.flat_id
+                ORDER BY r.full_name
+            """).fetchall()
+
+        return rows
+
+    except Exception:
+        logger.exception("GET /residents failed")
+
+        raise HTTPException(
+            status_code=500,
+            detail="Could not load residents"
+        )
+
+
+@app.post("/residents", status_code=201)
+def create_resident(data: ResidentCreate):
+    try:
+        with db_connection() as conn:
+
+            flat = conn.execute("""
+                SELECT flat_number, building
+                FROM flats
+                WHERE id = %s
+            """, (data.flat_id,)).fetchone()
+
+            if not flat:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Flat not found"
+                )
+
+            row = conn.execute("""
+                INSERT INTO residents (full_name, flat_id, phone)
+                VALUES (%s, %s, %s)
+                RETURNING id, full_name, flat_id, phone, created_at
+            """, (
+                data.full_name.strip(),
+                data.flat_id,
+                data.phone.strip() or None
+            )).fetchone()
+
+            row["flat_number"] = flat["flat_number"]
+            row["building"] = flat["building"]
+
+        return row
+
+    except HTTPException:
+        raise
+
+    except Exception:
+        logger.exception("POST /residents failed")
+
+        raise HTTPException(
+            status_code=500,
+            detail="Could not create resident"
+        )
+
+
+# -------------------------
+# VISITORS
+# -------------------------
+
+@app.get("/visitors")
+def get_visitors():
+    try:
+        with db_connection() as conn:
+            rows = conn.execute("""
+                SELECT
+                    v.id,
+                    v.full_name,
+                    v.flat_id,
+                    f.flat_number,
+                    f.building,
+                    v.phone,
+                    v.purpose,
+                    v.status,
+                    v.created_at,
+                    v.exited_at
+                FROM visitors v
+                JOIN flats f ON f.id = v.flat_id
+                ORDER BY v.created_at DESC, v.id DESC
+            """).fetchall()
+
+        return rows
+
+    except Exception:
+        logger.exception("GET /visitors failed")
+
+        raise HTTPException(
+            status_code=500,
+            detail="Could not load visitors"
+        )
+
+
+@app.post("/visitors", status_code=201)
+def create_visitor(data: VisitorCreate):
+    try:
+        with db_connection() as conn:
+
+            flat = conn.execute("""
+                SELECT id, flat_number, building
+                FROM flats
+                WHERE id = %s
+            """, (data.flat_id,)).fetchone()
+
+            if not flat:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Flat not found"
+                )
+
+            row = conn.execute("""
+                INSERT INTO visitors (
+                    full_name,
+                    flat_id,
+                    phone,
+                    purpose,
+                    status
+                )
+                VALUES (%s, %s, %s, %s, 'Inside')
+                RETURNING
+                    id,
+                    full_name,
+                    flat_id,
+                    phone,
+                    purpose,
+                    status,
+                    created_at,
+                    exited_at
+            """, (
+                data.full_name.strip(),
+                data.flat_id,
+                data.phone.strip(),
+                data.purpose.strip()
+            )).fetchone()
+
+            row["flat_number"] = flat["flat_number"]
+            row["building"] = flat["building"]
+
+        return row
+
+    except HTTPException:
+        raise
+
+    except Exception:
+        logger.exception("POST /visitors failed")
+
+        raise HTTPException(
+            status_code=500,
+            detail="Could not register visitor"
         )
 
 
@@ -346,9 +458,11 @@ def generate_flat_qr(flat_id: int):
 def checkout_visitor(visitor_id: int):
     try:
         with db_connection() as conn:
+
             row = conn.execute("""
                 UPDATE visitors
-                SET status = 'Checked Out', exited_at = NOW()
+                SET status = 'Checked Out',
+                    exited_at = NOW()
                 WHERE id = %s AND status = 'Inside'
                 RETURNING id, full_name, status, exited_at
             """, (visitor_id,)).fetchone()
@@ -356,27 +470,38 @@ def checkout_visitor(visitor_id: int):
             if row:
                 return row
 
-            exists = conn.execute(
-                "SELECT id, status FROM visitors WHERE id = %s",
-                (visitor_id,),
-            ).fetchone()
+            exists = conn.execute("""
+                SELECT id, status
+                FROM visitors
+                WHERE id = %s
+            """, (visitor_id,)).fetchone()
 
             if not exists:
-                raise HTTPException(status_code=404, detail="Visitor not found")
+                raise HTTPException(
+                    status_code=404,
+                    detail="Visitor not found"
+                )
 
             raise HTTPException(
                 status_code=409,
-                detail="Visitor has already checked out",
+                detail="Visitor has already checked out"
             )
+
     except HTTPException:
         raise
+
     except Exception:
         logger.exception("PATCH visitor checkout failed")
-        raise HTTPException(status_code=500, detail="Could not check out visitor")
 
-def hash_qr_token(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+        raise HTTPException(
+            status_code=500,
+            detail="Could not check out visitor"
+        )
 
+
+# -------------------------
+# SECONDARY PEOPLE
+# -------------------------
 
 @app.get("/secondary-people")
 def get_secondary_people():
@@ -399,9 +524,12 @@ def get_secondary_people():
                 JOIN flats f ON f.id = s.flat_id
                 ORDER BY s.created_at DESC
             """).fetchall()
+
         return rows
+
     except Exception:
         logger.exception("GET /secondary-people failed")
+
         raise HTTPException(
             status_code=500,
             detail="Could not load secondary people"
@@ -415,6 +543,7 @@ def create_secondary_person(data: SecondaryPersonCreate):
 
     try:
         with db_connection() as conn:
+
             resident = conn.execute("""
                 SELECT id, flat_id
                 FROM residents
@@ -435,12 +564,23 @@ def create_secondary_person(data: SecondaryPersonCreate):
 
             row = conn.execute("""
                 INSERT INTO secondary_people (
-                    full_name, phone, category,
-                    resident_id, flat_id, qr_token_hash
+                    full_name,
+                    phone,
+                    category,
+                    resident_id,
+                    flat_id,
+                    qr_token_hash
                 )
                 VALUES (%s, %s, %s, %s, %s, %s)
-                RETURNING id, full_name, phone, category,
-                          resident_id, flat_id, active, created_at
+                RETURNING
+                    id,
+                    full_name,
+                    phone,
+                    category,
+                    resident_id,
+                    flat_id,
+                    active,
+                    created_at
             """, (
                 data.full_name.strip(),
                 data.phone.strip(),
@@ -450,7 +590,6 @@ def create_secondary_person(data: SecondaryPersonCreate):
                 token_hash
             )).fetchone()
 
-        # The raw QR token is returned only at creation.
         return {
             **row,
             "qr_token": token
@@ -458,13 +597,50 @@ def create_secondary_person(data: SecondaryPersonCreate):
 
     except HTTPException:
         raise
+
     except Exception:
         logger.exception("POST /secondary-people failed")
+
         raise HTTPException(
             status_code=500,
             detail="Could not register secondary person"
         )
 
+
+@app.patch("/secondary-people/{person_id}/deactivate")
+def deactivate_secondary_person(person_id: int):
+    try:
+        with db_connection() as conn:
+            row = conn.execute("""
+                UPDATE secondary_people
+                SET active = FALSE
+                WHERE id = %s
+                RETURNING id, full_name, active
+            """, (person_id,)).fetchone()
+
+        if not row:
+            raise HTTPException(
+                status_code=404,
+                detail="Secondary person not found"
+            )
+
+        return row
+
+    except HTTPException:
+        raise
+
+    except Exception:
+        logger.exception("Deactivation failed")
+
+        raise HTTPException(
+            status_code=500,
+            detail="Could not deactivate person"
+        )
+
+
+# -------------------------
+# QR VALIDATION
+# -------------------------
 
 @app.post("/qr/validate")
 def validate_qr(data: dict):
@@ -481,7 +657,7 @@ def validate_qr(data: dict):
     try:
         with db_connection() as conn:
 
-            # Check flat QR first
+            # First check whether this is a flat QR.
             flat = conn.execute("""
                 SELECT id, flat_number, building
                 FROM flats
@@ -495,7 +671,7 @@ def validate_qr(data: dict):
                     "flat": flat
                 }
 
-            # Otherwise check secondary-person QR
+            # Otherwise check secondary-person QR.
             person = conn.execute("""
                 SELECT
                     s.id,
@@ -524,36 +700,11 @@ def validate_qr(data: dict):
 
     except HTTPException:
         raise
+
     except Exception:
         logger.exception("QR validation failed")
+
         raise HTTPException(
             status_code=500,
             detail="Could not validate QR"
-        )
-        @app.patch("/secondary-people/{person_id}/deactivate")
-def deactivate_secondary_person(person_id: int):
-    try:
-        with db_connection() as conn:
-            row = conn.execute("""
-                UPDATE secondary_people
-                SET active = FALSE
-                WHERE id = %s
-                RETURNING id, full_name, active
-            """, (person_id,)).fetchone()
-
-        if not row:
-            raise HTTPException(
-                status_code=404,
-                detail="Secondary person not found"
-            )
-
-        return row
-
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("Deactivation failed")
-        raise HTTPException(
-            status_code=500,
-            detail="Could not deactivate person"
         )

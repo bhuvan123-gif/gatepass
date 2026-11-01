@@ -1010,14 +1010,7 @@ const [newProviderQR, setNewProviderQR] = useState("");
       )}
   </section>
 )}
-              <div className="placeholder-icon">
-                <UserRoundCog size={27} />
-              </div>
-              <h3>Service Provider Management</h3>
-              <p>This module has not been connected to the database yet.</p>
-              <span className="coming-soon">INTERFACE IN DEVELOPMENT</span>
-            </section>
-          )}
+
 
           {activePage === "Access Logs" && (
             <section className="panel placeholder-panel">

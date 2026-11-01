@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import {
   getFlats, createFlat, getResidents, createResident, getVisitors,
   createVisitor, checkoutVisitor, getSecondaryPeople, createSecondaryPerson,
-  deactivateSecondaryPerson, type Flat, type Resident, type Visitor,
-  type SecondaryPerson,
+  deactivateSecondaryPerson, generateFlatQR,
+  type Flat, type Resident, type Visitor, type SecondaryPerson,
 } from "./api";
 import { QRCodeSVG } from "qrcode.react";
 import { Html5QrcodeScanner } from "html5-qrcode";
@@ -63,6 +63,16 @@ export default function App() {
   const [visitorsLoading, setVisitorsLoading] = useState(true);
   const [visitorsError, setVisitorsError] = useState("");
   const [visitorActionId, setVisitorActionId] = useState<number | null>(null);
+
+  const [flatQR, setFlatQR] = useState<{
+  flatId: number;
+  flatNumber: string;
+  building: string | null;
+  token: string;
+} | null>(null);
+
+const [flatQRLoading, setFlatQRLoading] = useState<number | null>(null);
+const [flatQRMessage, setFlatQRMessage] = useState("");
 
   const loadVisitors = useCallback(async () => {
     try {

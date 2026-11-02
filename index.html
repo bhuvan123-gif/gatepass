@@ -19,5 +19,14 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+  <script>
+  const sidebar = document.querySelector('.sidebar');
+  const menuBtn = document.querySelector('.mobile-menu-button');
+  
+  // Toggle the sidebar open/closed
+  menuBtn.addEventListener('click', () => {
+    sidebar.classList.toggle('open');
+  });
+</script>
   </body>
 </html>

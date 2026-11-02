@@ -429,17 +429,21 @@ def get_visitors():
 
 
 @app.post("/visitors")
+@app.post("/visitors")
 def create_visitor(data: VisitorCreate):
     with db_connection() as connection:
         with connection.cursor() as cursor:
+            # 1. Fetch flat details (Modified to get flat_number for the SMS)
             cursor.execute(
-                "SELECT id FROM flats WHERE id=%s",
+                "SELECT id, flat_number FROM flats WHERE id=%s",
                 (data.flat_id,),
             )
+            flat = cursor.fetchone()
 
-            if not cursor.fetchone():
+            if not flat:
                 raise HTTPException(status_code=404, detail="Flat not found")
 
+            # 2. Insert visitor
             cursor.execute("""
                 INSERT INTO visitors
                     (full_name, flat_id, phone, purpose, status, vehicle_number)
@@ -452,10 +456,41 @@ def create_visitor(data: VisitorCreate):
                 data.purpose,
                 (data.vehicle_number or "").strip() or None,
             ))
-
+            
             visitor = cursor.fetchone()
 
+            # 3. Fetch active residents for this flat
+            cursor.execute("""
+                SELECT full_name, phone FROM residents
+                WHERE flat_id=%s AND is_active=TRUE
+            """, (data.flat_id,))
+            
+            residents = cursor.fetchall()
+
         connection.commit()
+
+    # 4. Trigger Fast2SMS Alert
+    fast2sms_key = os.getenv("FAST2SMS_API_KEY")
+    if fast2sms_key and residents:
+        message_text = f"GatePass: Visitor {data.full_name.strip()} ({data.purpose}) is at the gate for Flat {flat['flat_number']}."
+        
+        for resident in residents:
+            if resident["phone"]:
+                try:
+                    requests.post(
+                        "https://www.fast2sms.com/dev/bulkV2",
+                        headers={"authorization": fast2sms_key},
+                        data={
+                            "route": "q",
+                            "message": message_text,
+                            "language": "english",
+                            "numbers": resident["phone"]
+                        },
+                        timeout=5
+                    )
+                    logger.info(f"SMS sent to {resident['phone']}")
+                except Exception as e:
+                    logger.error(f"SMS failed for {resident['phone']}: {e}")
 
     return visitor
 

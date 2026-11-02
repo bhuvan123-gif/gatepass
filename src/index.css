@@ -894,3 +894,80 @@ tbody tr:hover {
   pointer-events: auto !important;
   background: white;
 }
+/* =========================================
+   MOBILE RESPONSIVE LAYOUT (Add to bottom)
+   ========================================= */
+
+/* 1. Viewport & Scroll Fixes */
+html, body {
+  width: 100vw;
+  overflow-x: hidden; /* Prevent horizontal screen wobble */
+  overflow-y: auto !important; 
+  -webkit-overflow-scrolling: touch; /* Smooth momentum scrolling on iOS */
+}
+
+@media (max-width: 768px) {
+  /* 2. Hide Sidebar off-screen to save space */
+  .sidebar {
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
+    box-shadow: 5px 0 15px rgba(0,0,0,0.2);
+  }
+
+  /* Add this class via JavaScript when the menu button is clicked */
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  /* 3. Expand main area to full screen */
+  .main-area {
+    margin-left: 0;
+  }
+
+  /* 4. Show the hidden mobile menu buttons */
+  .mobile-menu-button,
+  .mobile-close {
+    display: grid;
+  }
+
+  /* 5. Adjust padding for mobile screens */
+  .topbar {
+    padding: 0 15px;
+  }
+  
+  .page-content {
+    padding: 20px 15px;
+  }
+
+  /* 6. Stack layouts vertically */
+  .welcome-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 15px;
+  }
+
+  .overview-grid {
+    grid-template-columns: 1fr; /* Stack panels instead of side-by-side */
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr); /* 2x2 grid instead of 4 in a row */
+  }
+
+  /* 7. Enlarge touch targets to prevent accidental misclicks */
+  input, button, select {
+    min-height: 44px; /* Standard mobile touch size */
+    font-size: 16px !important; /* Prevents iOS from auto-zooming when typing */
+  }
+
+  .search-box {
+    width: 100%; /* Make search fill available space */
+  }
+}
+
+/* For very small phones (like iPhone SE) */
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr; /* Stack stats into a single column */
+  }
+}

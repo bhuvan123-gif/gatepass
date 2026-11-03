@@ -1184,17 +1184,18 @@ export default function App() {
 
   // -------------------- MAIN LAYOUT --------------------
 
-  return (
+return (
     <div className="app-shell">
-      {/* UPDATE: The backdrop uses a div with the modal-backdrop class */}
+      {/* UPDATE THIS SECTION: Use mobile-overlay instead of modal-backdrop */}
       {mobileMenu && (
         <div
-          className="modal-backdrop"
-          style={{ zIndex: 19 }}
+          className="mobile-overlay"
           aria-label="Close menu"
           onClick={() => setMobileMenu(false)}
         />
       )}
+
+      <aside className={`sidebar ${mobileMenu ? "open" : ""}`}>
 
       {/* UPDATE: The sidebar now assigns the "open" class when mobileMenu is true */}
       <aside className={`sidebar ${mobileMenu ? "open" : ""}`}>

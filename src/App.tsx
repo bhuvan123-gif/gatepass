@@ -1145,7 +1145,7 @@ export default function App() {
   }
 
 
-  // -------------------- DASHBOARD --------------------
+ // -------------------- DASHBOARD --------------------
 
   function renderDashboard() {
     return (
@@ -1169,18 +1169,9 @@ export default function App() {
         <div style={{ marginTop: 24 }}>
           {renderVisitors()}
         </div>
-
-        <div style={{ marginTop: 24 }}>
-          {renderFlats()}
-        </div>
-
-        <div style={{ marginTop: 24 }}>
-          {renderResidents()}
-        </div>
       </>
     );
   }
-
 
  // -------------------- MAIN LAYOUT --------------------
 

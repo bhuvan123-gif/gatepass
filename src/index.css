@@ -913,7 +913,14 @@ html, body {
     transition: transform 0.3s ease;
     box-shadow: 5px 0 15px rgba(0,0,0,0.2);
   }
-
+/* Add this missing overlay style */
+.mobile-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 19; /* Keeps it strictly BEHIND the sidebar (z-index: 20) */
+  background: rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+}
   /* Add this class via JavaScript when the menu button is clicked */
   .sidebar.open {
     transform: translateX(0);

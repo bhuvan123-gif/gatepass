@@ -1182,11 +1182,11 @@ export default function App() {
   }
 
 
-  // -------------------- MAIN LAYOUT --------------------
+ // -------------------- MAIN LAYOUT --------------------
 
-return (
+  return (
     <div className="app-shell">
-      {/* UPDATE THIS SECTION: Use mobile-overlay instead of modal-backdrop */}
+      
       {mobileMenu && (
         <div
           className="mobile-overlay"
@@ -1195,9 +1195,6 @@ return (
         />
       )}
 
-      <aside className={`sidebar ${mobileMenu ? "open" : ""}`}>
-
-      {/* UPDATE: The sidebar now assigns the "open" class when mobileMenu is true */}
       <aside className={`sidebar ${mobileMenu ? "open" : ""}`}>
         <div className="brand">
           <div className="brand-mark">
@@ -1268,10 +1265,11 @@ return (
             <Settings size={18} />
           </div>
         </div>
-      </aside>
+      </aside> {/* <--- THIS IS THE TAG THAT WAS MISSING */}
 
 
       <main className="main-area">
+        {/* ... rest of your code ... */}
         <header className="topbar">
           <button
             className="icon-button mobile-menu-button"

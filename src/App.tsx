@@ -109,6 +109,7 @@ export default function App() {
 
   const [scanEnabled, setScanEnabled] = useState(false);
   const [scanResult, setScanResult] = useState("");
+  const [manualToken, setManualToken] = useState("");
 
 
   // -------------------- LOAD DATA --------------------
@@ -201,6 +202,33 @@ export default function App() {
   }, [scanEnabled]);
 
 
+// -------------------- MANUAL QR VERIFICATION --------------------
+  async function handleManualQRSubmit(event: React.FormEvent) {
+    event.preventDefault();
+    if (!manualToken.trim()) return;
+
+    try {
+      const result = await validateQR(manualToken.trim());
+
+      if (result.type === "flat" && result.flat) {
+        setScanResult(
+          `Verified flat: ${result.flat.building ?? ""} ${result.flat.flat_number}`
+        );
+      } else if (result.person) {
+        setScanResult(
+          `Verified: ${result.person.full_name} · ${result.person.category} · ${result.person.flat_number ?? ""}`
+        );
+      } else {
+        setScanResult("QR verified.");
+      }
+      
+      setManualToken(""); // Clear input on success
+    } catch (error) {
+      setScanResult(
+        error instanceof Error ? error.message : "Invalid QR code."
+      );
+    }
+  }
   // -------------------- HELPERS --------------------
 
   function confirmDelete(label: string) {
@@ -1319,20 +1347,35 @@ export default function App() {
 
 
           <section className="panel" style={{ padding: 24, marginTop: 24 }}>
-            <h3>Gate QR Scanner</h3>
-
+            <h3>Gate QR Verification</h3>
             <p>
-              Scan a flat QR or service-provider QR to verify it.
+              Scan a QR code using the camera, or manually enter the 
+              token string below.
             </p>
+
+            <form 
+              onSubmit={handleManualQRSubmit} 
+              className="management-form" 
+              style={{ marginBottom: 16 }}
+            >
+              <input
+                value={manualToken}
+                onChange={(e) => setManualToken(e.target.value)}
+                placeholder="Enter manual QR token..."
+                required
+              />
+              <button type="submit">Verify Token</button>
+            </form>
 
             <button
               type="button"
+              className="secondary-button"
               onClick={() => {
                 setScanResult("");
                 setScanEnabled((current) => !current);
               }}
             >
-              {scanEnabled ? "Stop Scanner" : "Start Scanner"}
+              {scanEnabled ? "Close Camera" : "Open Camera Scanner"}
             </button>
 
             {scanEnabled && (
@@ -1342,7 +1385,11 @@ export default function App() {
               />
             )}
 
-            {scanResult && <p>{scanResult}</p>}
+            {scanResult && (
+              <div className="form-notice" style={{ marginTop: 16, padding: 12, background: "#f0f3ff", border: "1px solid #c2ccff", borderRadius: 6, color: "#253eab", fontWeight: 600 }}>
+                {scanResult}
+              </div>
+            )}
           </section>
         </div>
       </main>

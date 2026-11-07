@@ -1408,3 +1408,25 @@ export default function App() {
                 setScanResult("");
                 setScanEnabled((current) => !current);
               }}
+            >
+              {scanEnabled ? "Close Camera" : "Open Camera Scanner"}
+            </button>
+
+            {scanEnabled && (
+              <div
+                id="gatepass-scanner"
+                style={{ maxWidth: 420, marginTop: 16 }}
+              />
+            )}
+
+            {scanResult && (
+              <div className="form-notice" style={{ marginTop: 16, padding: 12, background: "#f0f3ff", border: "1px solid #c2ccff", borderRadius: 6, color: "#253eab", fontWeight: 600 }}>
+                {scanResult}
+              </div>
+            )}
+          </section>
+        </div>
+      </main>
+    </div>
+  );
+}

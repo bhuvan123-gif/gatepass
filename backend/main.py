@@ -438,16 +438,16 @@ def create_visitor(data: VisitorCreate):
     app_base_url = os.getenv("APP_BASE_URL", "https://gatepass-3ym0.onrender.com")
     approval_url = f"{app_base_url}/approval?token={approval_token}"
 
-    if fast2sms_key and residents:
+  if fast2sms_key and residents:
         message_text = (
             f"GatePass: {data.full_name.strip()} ({data.purpose}) is at gate for Flat {flat['flat_number']}. "
             f"Allow or Deny entry: {approval_url}"
         )
-     for resident in residents:
+        for resident in residents:
             if resident["phone"]:
                 # Strip +91, spaces, and extract only the last 10 exact digits
                 clean_phone = "".join(c for c in resident["phone"] if c.isdigit())[-10:]
-
+                
                 try:
                     requests.post(
                         "https://www.fast2sms.com/dev/bulkV2",
@@ -460,13 +460,11 @@ def create_visitor(data: VisitorCreate):
                         },
                         timeout=5
                     )
-                    )
-                    logger.info(f"SMS alert sent to {resident['phone']}")
+                    logger.info(f"SMS alert sent to {clean_phone}")
                 except Exception as e:
-                    logger.error(f"Failed to dispatch SMS to {resident['phone']}: {e}")
+                    logger.error(f"Failed to dispatch SMS to {clean_phone}: {e}")
 
     return visitor
-
 
 @app.get("/api/approval/details")
 def get_approval_details(token: str = Query(...)):

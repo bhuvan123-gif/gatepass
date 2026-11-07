@@ -438,7 +438,7 @@ def create_visitor(data: VisitorCreate):
     app_base_url = os.getenv("APP_BASE_URL", "https://gatepass-3ym0.onrender.com")
     approval_url = f"{app_base_url}/approval?token={approval_token}"
 
-  if fast2sms_key and residents:
+    if fast2sms_key and residents:
         message_text = (
             f"GatePass: {data.full_name.strip()} ({data.purpose}) is at gate for Flat {flat['flat_number']}. "
             f"Allow or Deny entry: {approval_url}"

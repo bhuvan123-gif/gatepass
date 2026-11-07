@@ -1,4 +1,29 @@
 
+/* Fix touch scrolling across mobile browsers and APK containers */
+html, body {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  overscroll-behavior-y: contain;
+}
+
+#root {
+  min-height: 100vh;
+  height: auto !important;
+  display: flex;
+  flex-direction: column;
+  overflow-y: visible !important;
+}
+
+/* Ensure data tables scroll horizontally without freezing the page */
+table, .table-container, .overflow-hidden {
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+}
 @import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap");
 
 :root {

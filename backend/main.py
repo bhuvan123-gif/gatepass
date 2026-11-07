@@ -443,8 +443,11 @@ def create_visitor(data: VisitorCreate):
             f"GatePass: {data.full_name.strip()} ({data.purpose}) is at gate for Flat {flat['flat_number']}. "
             f"Allow or Deny entry: {approval_url}"
         )
-        for resident in residents:
+     for resident in residents:
             if resident["phone"]:
+                # Strip +91, spaces, and extract only the last 10 exact digits
+                clean_phone = "".join(c for c in resident["phone"] if c.isdigit())[-10:]
+
                 try:
                     requests.post(
                         "https://www.fast2sms.com/dev/bulkV2",
@@ -453,9 +456,10 @@ def create_visitor(data: VisitorCreate):
                             "route": "q",
                             "message": message_text,
                             "language": "english",
-                            "numbers": resident["phone"]
+                            "numbers": clean_phone
                         },
                         timeout=5
+                    )
                     )
                     logger.info(f"SMS alert sent to {resident['phone']}")
                 except Exception as e:

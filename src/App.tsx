@@ -138,17 +138,19 @@ export default function App() {
       setProviders(providerData);
       setResidentStatuses(residentStatusData);
       setProviderStatuses(providerStatusData);
-      setMessage("");
+      // Not clearing setMessage here so auto-refresh doesn't hide success messages
     } catch (error) {
-      setMessage(
-        error instanceof Error ? error.message : "Could not load data."
-      );
+      console.error(error);
     }
   }, []);
 
-
+  // AUTO-REFRESH EVERY 5 SECONDS FOR LIVE SMS APPROVALS
   useEffect(() => {
     void loadAll();
+    const interval = setInterval(() => {
+      void loadAll();
+    }, 5000);
+    return () => clearInterval(interval);
   }, [loadAll]);
 
 
@@ -248,6 +250,7 @@ export default function App() {
       await action();
       await loadAll();
       setMessage(`${label} permanently deleted.`);
+      setTimeout(() => setMessage(""), 3000);
     } catch (error) {
       setMessage(
         error instanceof Error ? error.message : "Delete failed."
@@ -274,6 +277,29 @@ export default function App() {
     )?.status ?? "Unknown";
   }
 
+  // STATUS BADGE RENDERER FOR VISITORS
+  function renderVisitorStatus(status: string) {
+    let bg = "#e2e8f0"; // gray for exited/unknown
+    let col = "#475569";
+    
+    if (status === "Pending") {
+      bg = "#fef3c7"; col = "#d97706"; // orange
+    } else if (status === "Inside" || status === "Approved") {
+      bg = "#dcfce3"; col = "#16a34a"; // green
+    } else if (status === "Denied") {
+      bg = "#fee2e2"; col = "#dc2626"; // red
+    }
+    
+    return (
+      <span style={{ 
+        backgroundColor: bg, color: col, padding: "4px 10px", 
+        borderRadius: "12px", fontSize: "12px", fontWeight: 700,
+        display: "inline-block", border: `1px solid ${col}33`
+      }}>
+        {status}
+      </span>
+    );
+  }
 
   // -------------------- FLAT REGISTRATION --------------------
 
@@ -289,6 +315,7 @@ export default function App() {
       setFlatNumber("");
       setBuilding("");
       setMessage("Flat registered.");
+      setTimeout(() => setMessage(""), 3000);
 
       await loadAll();
     } catch (error) {
@@ -320,6 +347,7 @@ export default function App() {
       setResidentFlat("");
       setResidentPhone("");
       setMessage("Resident registered.");
+      setTimeout(() => setMessage(""), 3000);
 
       await loadAll();
     } catch (error) {
@@ -370,6 +398,7 @@ export default function App() {
       setProviderResident("");
 
       setMessage("Service provider registered. Save their QR code.");
+      setTimeout(() => setMessage(""), 4000);
 
       await loadAll();
     } catch (error) {
@@ -430,7 +459,8 @@ export default function App() {
       setVisitorVehicle("");
       setVisitorPurpose("Personal Visit");
 
-      setMessage("Visitor checked in successfully.");
+      setMessage("Visitor submitted. SMS alert sent to resident. Awaiting approval...");
+      setTimeout(() => setMessage(""), 5000);
 
       await loadAll();
     } catch (error) {
@@ -469,6 +499,7 @@ export default function App() {
       }
 
       setMessage(`${action} recorded.`);
+      setTimeout(() => setMessage(""), 3000);
       await loadAll();
     } catch (error) {
       setMessage(
@@ -1003,6 +1034,7 @@ export default function App() {
                 <th>VEHICLE</th>
                 <th>CHECK-IN</th>
                 <th>CHECK-OUT</th>
+                <th>STATUS</th>
                 <th>ACTION</th>
               </tr>
             </thead>
@@ -1032,6 +1064,8 @@ export default function App() {
                       ? new Date(visitor.exited_at).toLocaleString()
                       : "—"}
                   </td>
+                  
+                  <td>{renderVisitorStatus(visitor.status)}</td>
 
                   <td>
                     {visitor.status === "Inside" && (
@@ -1042,6 +1076,7 @@ export default function App() {
                             await checkoutVisitor(visitor.id);
                             await loadAll();
                             setMessage("Visitor checked out.");
+                            setTimeout(() => setMessage(""), 3000);
                           } catch (error) {
                             setMessage(
                               error instanceof Error
@@ -1058,6 +1093,7 @@ export default function App() {
                     <button
                       type="button"
                       className="danger-button"
+                      style={{ marginLeft: 8 }}
                       onClick={() =>
                         void handleDelete(
                           `visitor ${visitor.full_name}`,
@@ -1065,7 +1101,7 @@ export default function App() {
                         )
                       }
                     >
-                      <Trash2 size={14} /> Delete
+                      <Trash2 size={14} />
                     </button>
                   </td>
                 </tr>
@@ -1073,7 +1109,7 @@ export default function App() {
 
               {filteredVisitors.length === 0 && (
                 <tr>
-                  <td colSpan={7}>No visitor records found.</td>
+                  <td colSpan={8}>No visitor records found.</td>
                 </tr>
               )}
             </tbody>
@@ -1119,7 +1155,7 @@ export default function App() {
                 <tr key={visitor.id}>
                   <td>{visitor.full_name}</td>
                   <td>{visitor.flat_number}</td>
-                  <td>{visitor.status}</td>
+                  <td>{renderVisitorStatus(visitor.status)}</td>
                   <td>{new Date(visitor.created_at).toLocaleString()}</td>
                   <td>
                     {visitor.exited_at
@@ -1284,11 +1320,9 @@ export default function App() {
             <Settings size={18} />
           </div>
         </div>
-      </aside> {/* <--- THIS IS THE TAG THAT WAS MISSING */}
-
+      </aside>
 
       <main className="main-area">
-        {/* ... rest of your code ... */}
         <header className="topbar">
           <button
             className="icon-button mobile-menu-button"
@@ -1374,25 +1408,3 @@ export default function App() {
                 setScanResult("");
                 setScanEnabled((current) => !current);
               }}
-            >
-              {scanEnabled ? "Close Camera" : "Open Camera Scanner"}
-            </button>
-
-            {scanEnabled && (
-              <div
-                id="gatepass-scanner"
-                style={{ maxWidth: 420, marginTop: 16 }}
-              />
-            )}
-
-            {scanResult && (
-              <div className="form-notice" style={{ marginTop: 16, padding: 12, background: "#f0f3ff", border: "1px solid #c2ccff", borderRadius: 6, color: "#253eab", fontWeight: 600 }}>
-                {scanResult}
-              </div>
-            )}
-          </section>
-        </div>
-      </main>
-    </div>
-  );
-}
